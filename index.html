@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#050507" id="meta-theme">
+<title>InstaSunx</title>
+<link rel="manifest" href="manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ══════════════════════════════════════════
+   RESET & VARIABLES
+══════════════════════════════════════════ */
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none}
+:root{
+  --bg:#050507;
+  --s1:#0e0e12;
+  --s2:#17171d;
+  --s3:#202028;
+  --s4:#2a2a35;
+  --acc:#ff2d55;
+  --acc2:#ff9f0a;
+  --acc3:#30d158;
+  --blue:#0a84ff;
+  --purple:#bf5af2;
+  --text:#f0f0f5;
+  --muted:#8e8e9e;
+  --border:rgba(255,255,255,0.08);
+  --r:14px;
+}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;font-size:16px}
+
+/* ══════════════════════════════════════════
+   PANTALLAS
+══════════════════════════════════════════ */
+.screen{position:fixed;inset:0;display:none;flex-direction:column;background:var(--bg);z-index:1}
+.screen.active{display:flex}
+#s-auth{align-items:center;justify-content:center;padding:24px}
+
+/* ══════════════════════════════════════════
+   AUTH
+══════════════════════════════════════════ */
+.auth-bg{position:absolute;inset:0;background:#000;overflow:hidden;pointer-events:none}
+.auth-bg::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(0,200,80,0.12) 0%,transparent 60%),radial-gradient(ellipse at 80% 100%,rgba(220,30,30,0.1) 0%,transparent 50%)}
+.auth-bg canvas{position:absolute;inset:0;opacity:.18}
+.auth-logo{font-family:'Bebas Neue',sans-serif;font-size:82px;letter-spacing:6px;line-height:1;color:#e50914;margin-bottom:4px;position:relative;z-index:1;text-shadow:0 0 40px rgba(229,9,20,0.5)}
+.auth-tagline{font-size:11px;color:#00c850;letter-spacing:4px;text-transform:uppercase;margin-bottom:36px;position:relative;z-index:1;opacity:.8}
+.auth-sub{display:none}
+.auth-card{width:100%;max-width:360px;background:rgba(0,0,0,0.82);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border:1px solid rgba(0,200,80,0.15);border-radius:4px;padding:32px 28px;position:relative;z-index:1;box-shadow:0 0 60px rgba(0,0,0,0.8),0 0 0 1px rgba(0,200,80,0.05)}
+.auth-tabs{display:flex;margin-bottom:28px;border-bottom:1px solid rgba(255,255,255,0.08);gap:0}
+.auth-tab{flex:1;padding:12px 8px;text-align:center;font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.3);cursor:pointer;transition:all .2s;border-bottom:2px solid transparent;margin-bottom:-1px}
+.auth-tab.active{color:#00c850;border-bottom-color:#00c850}
+.auth-panel{display:none;flex-direction:column;gap:16px}
+.auth-panel.active{display:flex}
+.inp{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.12);border-radius:3px;padding:15px 18px;font-size:15px;color:#fff;font-family:'Outfit',sans-serif;outline:none;width:100%;transition:all .25s;letter-spacing:.3px}
+.inp:focus{border-color:#00c850;background:rgba(0,200,80,0.05);box-shadow:0 0 0 1px rgba(0,200,80,0.2)}
+.inp::placeholder{color:rgba(255,255,255,0.25);font-size:14px}
+.btn{border:none;border-radius:3px;padding:16px;font-size:14px;font-weight:700;letter-spacing:2px;text-transform:uppercase;font-family:'Outfit',sans-serif;cursor:pointer;width:100%;transition:all .2s}
+.btn:active{transform:scale(.98);opacity:.9}
+.btn-acc{background:#e50914;color:#fff;box-shadow:0 4px 24px rgba(229,9,20,0.35)}
+.btn-acc:hover{background:#f40612;box-shadow:0 4px 32px rgba(229,9,20,0.5)}
+.btn-sec{background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.15)}
+.auth-err{font-size:13px;color:var(--acc);text-align:center;display:none}
+.auth-err.show{display:block}
+
+/* ══════════════════════════════════════════
+   MAIN LAYOUT
+══════════════════════════════════════════ */
+#s-main{flex-direction:column}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:12px 16px 8px;flex-shrink:0;position:relative;z-index:10}
+.topbar-logo{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px;background:linear-gradient(135deg,#fff,var(--acc));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.topbar-actions{display:flex;align-items:center;gap:4px}
+.ico-btn{background:none;border:none;color:var(--text);cursor:pointer;padding:8px;border-radius:10px;display:flex;align-items:center;justify-content:center;transition:background .15s;position:relative}
+.ico-btn:active{background:var(--s2)}
+.badge{position:absolute;top:4px;right:4px;min-width:16px;height:16px;background:var(--acc);border-radius:8px;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 3px;border:2px solid var(--bg)}
+
+/* Pestañas */
+.tabs{display:flex;padding:0 16px;gap:4px;flex-shrink:0}
+.tab{flex:1;padding:8px 4px;font-size:13px;font-weight:500;color:var(--muted);border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;font-family:'Outfit',sans-serif;white-space:nowrap}
+.tab.active{color:var(--text);border-bottom-color:var(--acc)}
+
+/* ══════════════════════════════════════════
+   FEED DE REELS (scroll vertical snap)
+══════════════════════════════════════════ */
+.feed{flex:1;overflow-y:scroll;scroll-snap-type:y mandatory;scrollbar-width:none;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+.feed::-webkit-scrollbar{display:none}
+
+.reel{scroll-snap-align:start;scroll-snap-stop:always;height:var(--reel-h,calc(100svh - 160px));position:relative;background:#000;overflow:hidden;display:flex;align-items:center;justify-content:center}
+
+/* Video embed de YouTube */
+.yt-iframe{position:absolute;inset:0;width:100%;height:100%;border:none;pointer-events:none}
+/* Shorts: necesita aspect ratio 9:16 centrado */
+.yt-wrap{position:absolute;inset:0;overflow:hidden;background:#000}
+.yt-wrap iframe{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:100vw;height:177.8vw;min-height:100%;min-width:56.25vh;border:none;pointer-events:none}
+
+/* Overlay tap para play/pause */
+.reel-tap{position:absolute;inset:0;z-index:5;cursor:pointer}
+
+/* Gradientes */
+.reel-grad{position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.85) 0%,rgba(0,0,0,0) 45%,rgba(0,0,0,0) 75%,rgba(0,0,0,.4) 100%);z-index:6;pointer-events:none}
+
+/* Info bottom-left */
+.reel-info{position:absolute;bottom:0;left:0;right:64px;padding:16px 14px 20px;z-index:7;pointer-events:none}
+.reel-channel{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.reel-ch-avatar{width:32px;height:32px;border-radius:50%;border:1.5px solid rgba(255,255,255,.5);overflow:hidden;flex-shrink:0;background:var(--s3)}
+.reel-ch-avatar img{width:100%;height:100%;object-fit:cover}
+.reel-ch-name{font-size:14px;font-weight:600;color:#fff}
+.reel-title{font-size:13px;color:rgba(255,255,255,.9);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-bottom:8px}
+.reel-cat{display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,.12);backdrop-filter:blur(8px);border-radius:20px;padding:4px 12px;font-size:11px;font-weight:600;color:#fff;border:1px solid rgba(255,255,255,.15);text-transform:uppercase;letter-spacing:.5px}
+
+/* Acciones derecha */
+.reel-actions{position:absolute;right:8px;bottom:70px;z-index:7;display:flex;flex-direction:column;align-items:center;gap:18px}
+.r-act{display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer}
+.r-act-ico{width:46px;height:46px;border-radius:50%;background:rgba(255,255,255,.13);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.1);transition:transform .15s,background .15s}
+.r-act-ico:active{transform:scale(.88)}
+.r-act.liked .r-act-ico{background:rgba(255,45,85,.35);border-color:rgba(255,45,85,.5)}
+.r-act-lbl{font-size:11px;color:rgba(255,255,255,.85);font-weight:500}
+
+/* Reel reaction picker flotante */
+.reel-react-picker{position:fixed;left:50%;transform:translateX(-50%) scale(0.7);bottom:120px;z-index:99;background:rgba(20,20,24,0.95);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.12);border-radius:40px;padding:10px 16px;display:flex;gap:10px;opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;box-shadow:0 8px 40px rgba(0,0,0,.7)}
+.reel-react-picker.show{opacity:1;transform:translateX(-50%) scale(1);pointer-events:all}
+.reel-react-picker .ep-emoji{font-size:28px;cursor:pointer;padding:4px 2px;border-radius:8px;transition:transform .12s}
+.reel-react-picker .ep-emoji:active{transform:scale(1.3)}
+
+/* Play/pause icon animado */
+.play-ind{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:8;opacity:0;transition:opacity .15s;pointer-events:none}
+.play-ind svg{filter:drop-shadow(0 2px 16px rgba(0,0,0,.7))}
+
+/* Heart like animado al doble tap */
+.like-burst{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) scale(0);z-index:9;pointer-events:none;font-size:72px;opacity:0}
+.like-burst.pop{animation:likePop .6s ease forwards}
+@keyframes likePop{0%{opacity:1;transform:translate(-50%,-50%) scale(0)}40%{opacity:1;transform:translate(-50%,-50%) scale(1.3)}70%{opacity:.8;transform:translate(-50%,-50%) scale(1)}100%{opacity:0;transform:translate(-50%,-50%) scale(1.1)}}
+
+/* Loader reel */
+.reel-loader{position:absolute;inset:0;z-index:4;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:var(--s1)}
+.reel-loader .spinner{width:32px;height:32px;border:3px solid var(--s4);border-top-color:var(--acc);border-radius:50%;animation:spin .7s linear infinite}
+.reel-loader p{font-size:13px;color:var(--muted)}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Sentinel de scroll infinito */
+.sentinel{height:1px;flex-shrink:0}
+
+/* ══════════════════════════════════════════
+   MENSAJES (INBOX)
+══════════════════════════════════════════ */
+#s-inbox{flex-direction:column}
+.inbox-list{flex:1;overflow-y:auto;padding:8px 0}
+.inbox-list::-webkit-scrollbar{display:none}
+.conv-item{display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer;transition:background .15s;position:relative}
+.conv-item:active{background:var(--s1)}
+.conv-item.unread::after{content:'';position:absolute;right:16px;top:50%;transform:translateY(-50%);width:10px;height:10px;background:var(--acc);border-radius:50%}
+.conv-av{width:50px;height:50px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:20px;flex-shrink:0;border:2px solid transparent;position:relative}
+.conv-av.online::after{content:'';position:absolute;bottom:1px;right:1px;width:12px;height:12px;background:var(--acc3);border-radius:50%;border:2px solid var(--bg)}
+.conv-body{flex:1;min-width:0}
+.conv-name{font-size:15px;font-weight:600;margin-bottom:3px}
+.conv-preview{font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:5px}
+.conv-time{font-size:11px;color:var(--muted);flex-shrink:0;align-self:flex-start;margin-top:2px}
+.inbox-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:12px;color:var(--muted);padding:40px}
+.inbox-empty p{font-size:14px;text-align:center;line-height:1.6}
+
+/* ══════════════════════════════════════════
+   CHAT
+══════════════════════════════════════════ */
+#s-chat{flex-direction:column}
+.chat-hdr{display:flex;align-items:center;gap:10px;padding:10px 12px 10px 8px;border-bottom:1px solid var(--border);flex-shrink:0;background:var(--bg)}
+.chat-back{background:none;border:none;color:var(--text);cursor:pointer;padding:8px;border-radius:10px;display:flex;flex-shrink:0}
+.chat-hdr-av{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;flex-shrink:0}
+.chat-hdr-info{flex:1;min-width:0}
+.chat-hdr-name{font-size:16px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chat-hdr-status{font-size:12px;color:var(--acc3)}
+.chat-msgs{flex:1;overflow-y:auto;padding:12px 12px 4px;display:flex;flex-direction:column;gap:4px}
+.chat-msgs::-webkit-scrollbar{display:none}
+
+/* Burbujas */
+.day-sep{text-align:center;font-size:11px;color:var(--muted);margin:8px 0;letter-spacing:.3px}
+.bubble-row{display:flex;align-items:flex-end;gap:6px;margin:2px 0}
+.bubble-row.me{flex-direction:row-reverse}
+.bubble-row.me .bubble-av{display:none}
+
+.bubble-av{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;margin-bottom:2px}
+.bubble-col{display:flex;flex-direction:column;gap:2px;max-width:78%}
+.bubble-row.me .bubble-col{align-items:flex-end}
+.bubble-name{font-size:11px;color:var(--muted);margin-bottom:1px;padding:0 4px}
+
+/* Burbuja texto */
+.bub{padding:9px 13px;border-radius:18px;font-size:14px;line-height:1.5;position:relative;word-break:break-word}
+.me .bub{background:var(--acc);color:#fff;border-bottom-right-radius:4px}
+.them .bub{background:var(--s2);color:var(--text);border-bottom-left-radius:4px}
+.bub-time{font-size:10px;color:var(--muted);padding:0 4px;align-self:flex-end}
+
+/* Burbuja reel */
+.bub-reel{width:220px;background:var(--s2);border-radius:16px;overflow:hidden;border:1px solid var(--border);cursor:pointer;transition:opacity .15s}
+.bub-reel:active{opacity:.8}
+.bub-reel-thumb{width:100%;height:130px;background:var(--s3);position:relative;overflow:hidden}
+.bub-reel-thumb img{width:100%;height:100%;object-fit:cover}
+.bub-reel-thumb .play-badge{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.3)}
+.bub-reel-body{padding:10px 12px}
+.bub-reel-title{font-size:13px;font-weight:500;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-bottom:4px}
+.bub-reel-ch{font-size:11px;color:var(--muted)}
+
+/* Reply preview */
+.reply-preview{background:var(--s1);border-left:3px solid var(--acc);border-radius:8px;padding:6px 10px;font-size:12px;color:var(--muted);margin-bottom:2px;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+
+/* Reacciones */
+.reactions{display:flex;flex-wrap:wrap;gap:3px;margin-top:2px}
+.reaction-pill{background:var(--s2);border:1px solid var(--border);border-radius:20px;padding:2px 8px;font-size:13px;cursor:pointer;transition:background .15s}
+.reaction-pill:active{background:var(--s3)}
+.reaction-pill.mine{border-color:rgba(255,45,85,.4);background:rgba(255,45,85,.1)}
+
+/* Input bar */
+.chat-input-bar{display:flex;align-items:flex-end;gap:8px;padding:8px 12px 16px;border-top:1px solid var(--border);background:var(--bg);flex-shrink:0}
+.reply-bar{padding:8px 12px;background:var(--s1);border-bottom:1px solid var(--border);display:none;flex-shrink:0;align-items:center;gap:8px}
+.reply-bar.show{display:flex}
+.reply-bar-text{flex:1;font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.reply-bar-close{background:none;border:none;color:var(--muted);cursor:pointer;padding:4px;display:flex}
+.chat-inp{flex:1;background:var(--s2);border:1px solid var(--border);border-radius:22px;padding:10px 16px;font-size:15px;color:var(--text);font-family:'Outfit',sans-serif;outline:none;resize:none;max-height:120px;overflow-y:auto;line-height:1.4;transition:border-color .2s}
+.chat-inp:focus{border-color:rgba(255,45,85,.4)}
+.chat-inp::placeholder{color:var(--muted)}
+.send-reel-btn,.send-msg-btn{width:42px;height:42px;border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:transform .1s,opacity .15s}
+.send-reel-btn:active,.send-msg-btn:active{transform:scale(.9)}
+.send-reel-btn{background:var(--s2);border:1px solid var(--border);color:var(--text)}
+.send-msg-btn{background:var(--acc);color:#fff}
+.send-msg-btn:disabled{opacity:.4}
+
+/* ══════════════════════════════════════════
+   EMOJI PICKER
+══════════════════════════════════════════ */
+.emoji-picker{
+  position:fixed;
+  bottom:90px;
+  left:50%;
+  transform:translateX(-50%) scale(0.85);
+  transform-origin:bottom center;
+  background:var(--s2);
+  border:1px solid rgba(255,255,255,0.15);
+  border-radius:40px;
+  padding:12px 20px;
+  display:none;
+  gap:14px;
+  z-index:200;
+  box-shadow:0 8px 40px rgba(0,0,0,.7);
+  backdrop-filter:blur(16px);
+  opacity:0;
+  transition:opacity .15s, transform .15s;
+}
+.emoji-picker.show{
+  display:flex;
+  opacity:1;
+  transform:translateX(-50%) scale(1);
+}
+.ep-emoji{font-size:28px;cursor:pointer;padding:2px;border-radius:8px;transition:transform .1s;line-height:1}
+.ep-emoji:active{transform:scale(1.3)}
+
+/* ══════════════════════════════════════════
+   AMIGOS
+══════════════════════════════════════════ */
+#s-amigos{flex-direction:column}
+.amigos-scroll{flex:1;overflow-y:auto;padding:8px 0}
+.amigos-scroll::-webkit-scrollbar{display:none}
+.amigo-card{margin:8px 16px;background:var(--s1);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.amigo-hdr{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--border)}
+.amigo-av{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:17px;flex-shrink:0}
+.amigo-name{font-size:15px;font-weight:600}
+.amigo-user{font-size:12px;color:var(--muted)}
+.amigo-likes{overflow-x:auto;display:flex;gap:8px;padding:10px 14px;scrollbar-width:none}
+.amigo-likes::-webkit-scrollbar{display:none}
+.amigo-like-card{flex-shrink:0;width:100px;background:var(--s2);border-radius:10px;overflow:hidden;cursor:pointer}
+.amigo-like-thumb{width:100%;height:70px;background:var(--s3);display:flex;align-items:center;justify-content:center;font-size:28px;overflow:hidden;position:relative}
+.amigo-like-thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.amigo-like-title{font-size:10px;padding:5px 6px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;color:var(--muted)}
+.amigo-empty{font-size:12px;color:var(--muted);padding:10px 14px}
+.amigos-section-title{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:600;padding:16px 16px 8px}
+
+/* Buscar amigos */
+.search-bar{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border);flex-shrink:0}
+.search-inp{flex:1;background:var(--s2);border:1px solid var(--border);border-radius:22px;padding:9px 14px;font-size:14px;color:var(--text);font-family:'Outfit',sans-serif;outline:none}
+.search-inp::placeholder{color:var(--muted)}
+.search-inp:focus{border-color:rgba(255,45,85,.4)}
+.search-results{position:absolute;top:100%;left:16px;right:16px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);z-index:20;overflow:hidden;display:none;box-shadow:0 8px 32px rgba(0,0,0,.5)}
+.search-results.show{display:block}
+.search-user-item{display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;transition:background .15s;border-bottom:1px solid var(--border)}
+.search-user-item:last-child{border-bottom:none}
+.search-user-item:active{background:var(--s3)}
+.search-wrap{position:relative;flex:1}
+
+/* Solicitudes */
+.req-item{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border)}
+.req-actions{display:flex;gap:6px;margin-left:auto}
+.req-btn{padding:6px 14px;border-radius:20px;font-size:13px;font-weight:500;cursor:pointer;font-family:'Outfit',sans-serif;border:none;transition:opacity .15s}
+.req-btn:active{opacity:.8}
+.req-btn.acc{background:var(--acc);color:#fff}
+.req-btn.rej{background:var(--s3);color:var(--muted);border:1px solid var(--border)}
+
+/* ══════════════════════════════════════════
+   PERFIL
+══════════════════════════════════════════ */
+#s-perfil{flex-direction:column}
+.perfil-scroll{flex:1;overflow-y:auto;padding:16px}
+.perfil-scroll::-webkit-scrollbar{display:none}
+.perfil-hdr{display:flex;align-items:center;gap:14px;margin-bottom:20px}
+.perfil-av-big{width:70px;height:70px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:28px;border:2.5px solid var(--acc);flex-shrink:0}
+.perfil-name{font-size:20px;font-weight:700}
+.perfil-username{font-size:14px;color:var(--muted)}
+.perfil-stats{display:flex;gap:0;background:var(--s1);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:20px}
+.pstat{flex:1;padding:14px 8px;text-align:center}
+.pstat:not(:last-child){border-right:1px solid var(--border)}
+.pstat-n{font-family:'Bebas Neue',sans-serif;font-size:26px;line-height:1;color:var(--acc)}
+.pstat-l{font-size:11px;color:var(--muted);margin-top:2px}
+.section-lbl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:600;margin-bottom:10px;margin-top:6px}
+.perfil-interests{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:20px}
+.int-chip{background:var(--s2);border:1px solid var(--border);border-radius:20px;padding:6px 14px;font-size:13px;font-weight:500}
+.perfil-saved{display:grid;grid-template-columns:repeat(3,1fr);gap:3px;margin-bottom:20px}
+.saved-th{aspect-ratio:1;background:var(--s2);border-radius:8px;overflow:hidden;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:28px;position:relative}
+.saved-th img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.perfil-out-btn{width:100%;background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:14px;font-size:15px;color:var(--muted);font-family:'Outfit',sans-serif;cursor:pointer;margin-top:8px}
+
+/* ══════════════════════════════════════════
+   BOTTOM NAV
+══════════════════════════════════════════ */
+.bottom-nav{display:none;border-top:1px solid var(--border);background:rgba(5,5,7,0.95);backdrop-filter:blur(10px);flex-shrink:0;position:relative;z-index:10}
+.bottom-nav.show{display:flex}
+.nav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px 4px 12px;cursor:pointer;color:var(--muted);border:none;background:none;gap:3px;font-family:'Outfit',sans-serif;transition:color .2s;position:relative}
+.nav-btn.active{color:var(--acc)}
+.nav-btn svg{transition:transform .2s}
+.nav-btn.active svg{transform:scale(1.1)}
+.nav-lbl{font-size:10px;font-weight:500;letter-spacing:.2px}
+
+/* ══════════════════════════════════════════
+   SHEET (enviar reel)
+══════════════════════════════════════════ */
+.sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;display:none;align-items:flex-end}
+.sheet-bg.show{display:flex}
+.sheet{background:var(--s1);border-radius:20px 20px 0 0;width:100%;padding:20px 16px 32px;max-height:75vh;overflow-y:auto}
+.sheet-handle{width:32px;height:4px;background:var(--s4);border-radius:2px;margin:0 auto 18px}
+.sheet-title{font-size:16px;font-weight:600;margin-bottom:14px}
+.sheet-friends{display:flex;flex-direction:column;gap:4px}
+.sf-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;cursor:pointer;transition:background .15s;border:1.5px solid transparent}
+.sf-item:active{background:var(--s2)}
+.sf-item.sel{border-color:rgba(255,45,85,.5);background:rgba(255,45,85,.07)}
+.sf-av{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;flex-shrink:0}
+.sf-name{font-size:15px;font-weight:500}
+.sf-user{font-size:12px;color:var(--muted)}
+.sheet-confirm{width:100%;margin-top:14px;background:var(--acc);border:none;border-radius:12px;padding:14px;font-size:15px;font-weight:600;color:#fff;font-family:'Outfit',sans-serif;cursor:pointer;transition:opacity .15s}
+.sheet-confirm:disabled{opacity:.35}
+.sheet-confirm:not(:disabled):active{opacity:.85}
+
+/* ══════════════════════════════════════════
+   NOTIFICACIÓN PUSH
+══════════════════════════════════════════ */
+.push{position:fixed;top:8px;left:8px;right:8px;z-index:200;background:var(--s2);border:1px solid var(--border);border-radius:16px;padding:12px 14px;display:flex;align-items:center;gap:10px;transform:translateY(calc(-100% - 20px));transition:transform .4s cubic-bezier(.34,1.56,.64,1);box-shadow:0 8px 32px rgba(0,0,0,.6);cursor:pointer}
+.push.show{transform:translateY(0)}
+.push-av{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;font-size:16px}
+.push-body{flex:1;min-width:0}
+.push-from{font-size:13px;font-weight:600;margin-bottom:1px}
+.push-text{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.push-thumb{width:40px;height:40px;border-radius:8px;background:var(--s3);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;overflow:hidden}
+.push-thumb img{width:100%;height:100%;object-fit:cover}
+
+/* ══════════════════════════════════════════
+   TOAST
+══════════════════════════════════════════ */
+.toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%) translateY(8px);background:var(--s2);border:1px solid var(--border);border-radius:24px;padding:9px 18px;font-size:13px;color:var(--text);z-index:150;opacity:0;transition:opacity .25s,transform .25s;white-space:nowrap;pointer-events:none;box-shadow:0 4px 20px rgba(0,0,0,.4)}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ══════════════════════════════════════════
+   LOADING GENERAL
+══════════════════════════════════════════ */
+.loading-full{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px}
+.spinner{width:32px;height:32px;border:3px solid var(--s4);border-top-color:var(--acc);border-radius:50%;animation:spin .7s linear infinite}
+.loading-full p{font-size:14px;color:var(--muted)}
+
+/* ── REEL MODAL ───────────────────────────────────────── */
+#reel-modal{position:fixed;inset:0;z-index:999;background:rgba(0,0,0,0.95);display:none;flex-direction:column;align-items:center;justify-content:center}
+#reel-modal.show{display:flex}
+.reel-modal-close{width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px)}
+.reel-modal-wrap{width:100%;max-width:420px;aspect-ratio:9/16;max-height:88vh;background:#000;border-radius:12px;overflow:hidden;position:relative}
+.reel-modal-wrap iframe{width:100%;height:100%;border:none}
+══════════════════════════════════════════ */
+@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+.fade-up{animation:fadeUp .35s ease both}
+a{color:inherit;text-decoration:none}
+
+/* Swipe-to-reply */
+.msg-swipe-wrap{display:contents;-webkit-user-select:none;user-select:none;touch-action:pan-y}
+.msg-swipe-wrap > *{transition:transform 0.25s ease}
+.reply-arrow{position:absolute;left:-32px;top:50%;transform:translateY(-50%);opacity:0;font-size:18px;transition:opacity .2s;pointer-events:none}
+
+/* ── Zumbido MSN ──────────────────────────────────────── */
+@keyframes msn-shake {
+  0%{transform:translateX(0) rotate(0) scale(1)}
+  5%{transform:translateX(-18px) rotate(-3deg) scale(1.02)}
+  10%{transform:translateX(18px) rotate(3deg) scale(1.02)}
+  15%{transform:translateX(-22px) rotate(-4deg) scale(1.03)}
+  20%{transform:translateX(22px) rotate(4deg) scale(1.03)}
+  25%{transform:translateX(-20px) rotate(-3.5deg) scale(1.02)}
+  30%{transform:translateX(20px) rotate(3.5deg) scale(1.02)}
+  35%{transform:translateX(-16px) rotate(-3deg) scale(1.01)}
+  40%{transform:translateX(16px) rotate(3deg) scale(1.01)}
+  50%{transform:translateX(-12px) rotate(-2deg)}
+  60%{transform:translateX(12px) rotate(2deg)}
+  70%{transform:translateX(-8px) rotate(-1.5deg)}
+  80%{transform:translateX(8px) rotate(1.5deg)}
+  90%{transform:translateX(-4px) rotate(-.5deg)}
+  100%{transform:translateX(0) rotate(0) scale(1)}
+}
+.msn-shake { animation: msn-shake 1s cubic-bezier(.36,.07,.19,.97) both; }
+
+/* ── Nudge button ─────────────────────────────────────── */
+.nudge-btn {
+  background: var(--s2); border: 1px solid var(--border); cursor: pointer;
+  color: var(--text); padding: 0; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  transition: color .2s, transform .15s, background .15s;
+  font-size: 18px; line-height: 1;
+  width: 42px; height: 42px; flex-shrink: 0;
+}
+.nudge-btn:active { transform: scale(.88); background: var(--s3); }
+.nudge-btn.fired { border-color: var(--acc); background: rgba(255,45,85,.15); }
+
+/* ── Notif permission banner ──────────────────────────── */
+.notif-banner {
+  position: fixed; bottom: 80px; left: 12px; right: 12px; z-index: 190;
+  background: var(--s2); border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 14px; padding: 14px 16px;
+  display: flex; align-items: center; gap: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.6);
+  transform: translateY(140%); opacity: 0; pointer-events: none;
+  transition: transform .35s cubic-bezier(.34,1.56,.64,1), opacity .3s;
+}
+.notif-banner.show { transform: translateY(0); opacity: 1; pointer-events: all; }
+.notif-banner-body { flex: 1; }
+.notif-banner-title { font-size: 13px; font-weight: 700; margin-bottom: 2px; }
+.notif-banner-sub { font-size: 11px; color: var(--muted); }
+.notif-banner-btn { background: var(--acc); color: #fff; border: none; border-radius: 8px; padding: 8px 14px; font-size: 12px; font-weight: 700; cursor: pointer; font-family: 'Outfit', sans-serif; flex-shrink: 0; }
+.notif-banner-close { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 18px; padding: 4px; flex-shrink: 0; }
+
+/* Splash screen — oculta el flash de login */
+#splash {
+  position: fixed; inset: 0; z-index: 9999;
+  background: #000;
+  display: flex; align-items: center; justify-content: center;
+  flex-direction: column; gap: 16px;
+  transition: opacity .3s;
+}
+#splash.hide { opacity: 0; pointer-events: none; }
+#splash-logo {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 64px; letter-spacing: 6px;
+  color: #e50914;
+  text-shadow: 0 0 40px rgba(229,9,20,0.5);
+}
+#splash-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #00c850;
+  animation: splash-pulse 1s ease infinite;
+}
+@keyframes splash-pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.6)} }
+
+/* ── Botones de adjunto y mic ─── */
+.chat-attach-btn, .mic-btn {
+  width: 38px; height: 38px; border-radius: 50%; border: none; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  background: var(--s2); color: var(--muted); transition: all .15s;
+}
+.chat-attach-btn:active { background: var(--s3); transform: scale(.9); }
+.mic-btn { touch-action: none; user-select: none; }
+.mic-btn.recording { background: rgba(255,45,85,.25); color: var(--acc); animation: mic-pulse 0.6s ease infinite; }
+@keyframes mic-pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.12)} }
+
+/* ── Recording bar ─── */
+.recording-bar {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  background: rgba(255,45,85,.95); backdrop-filter: blur(10px);
+  padding: 12px 16px; display: flex; align-items: center; gap: 12px;
+  font-size: 14px; font-weight: 600; color: #fff; z-index: 50;
+}
+.rec-dot { width: 10px; height: 10px; border-radius: 50%; background: #fff; animation: rec-blink 1s ease infinite; flex-shrink: 0; }
+@keyframes rec-blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+
+/* ── View-once + Audio sheet ─── */
+.view-once-sheet, .audio-preview { position: absolute; inset: 0; z-index: 100; display: flex !important; align-items: flex-end; }
+.vo-overlay { position: absolute; inset: 0; background: rgba(0,0,0,.6); }
+.vo-card { position: relative; background: var(--s1); border-radius: 24px 24px 0 0; padding: 24px 20px; width: 100%; }
+.vo-preview { width: 100%; max-height: 200px; overflow: hidden; border-radius: 12px; margin-bottom: 16px; }
+.vo-preview img { width: 100%; height: 200px; object-fit: cover; }
+.vo-title { font-size: 15px; font-weight: 700; text-align: center; margin-bottom: 16px; }
+.vo-options { display: flex; gap: 12px; margin-bottom: 12px; }
+.vo-btn { flex: 1; background: var(--s2); border: 1px solid var(--border); border-radius: 14px; padding: 16px 8px; display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; color: var(--text); font-family: 'Outfit',sans-serif; font-size: 14px; font-weight: 600; transition: background .15s; }
+.vo-btn:active { background: var(--s3); }
+.vo-btn small { font-size: 11px; color: var(--muted); font-weight: 400; text-align: center; }
+.vo-btn-once { border-color: rgba(255,45,85,.4); }
+.vo-cancel { width: 100%; padding: 14px; background: var(--s2); border: none; border-radius: 12px; color: var(--muted); font-size: 15px; font-weight: 600; cursor: pointer; font-family: 'Outfit',sans-serif; }
+
+/* ── Imagen en burbuja ─── */
+.bub-img { max-width: 220px; border-radius: 14px; overflow: hidden; cursor: pointer; position: relative; }
+.bub-img img { width: 100%; display: block; }
+.bub-img-once { filter: blur(16px); pointer-events: none; }
+.bub-img-once-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 700; color: #fff; cursor: pointer; }
+.bub-img-seen { opacity: .5; filter: grayscale(1); }
+
+/* ── Audio en burbuja ─── */
+.bub-audio { display: flex; align-items: center; gap: 10px; background: var(--s2); border-radius: 20px; padding: 10px 14px; max-width: 240px; }
+.bub-audio-btn { width: 36px; height: 36px; border-radius: 50%; background: var(--acc); border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; }
+.bub-audio-wave { flex: 1; height: 28px; display: flex; align-items: center; gap: 2px; }
+.bub-audio-wave span { display: inline-block; width: 3px; background: var(--muted); border-radius: 2px; animation: wave-idle 1.2s ease infinite; }
+.bub-audio-wave span:nth-child(1){height:8px;animation-delay:0s}
+.bub-audio-wave span:nth-child(2){height:16px;animation-delay:.1s}
+.bub-audio-wave span:nth-child(3){height:24px;animation-delay:.2s}
+.bub-audio-wave span:nth-child(4){height:12px;animation-delay:.3s}
+.bub-audio-wave span:nth-child(5){height:20px;animation-delay:.15s}
+.bub-audio-wave span:nth-child(6){height:8px;animation-delay:.25s}
+.bub-audio-time { font-size: 11px; color: var(--muted); flex-shrink: 0; }
+@keyframes wave-idle { 0%,100%{transform:scaleY(1)} 50%{transform:scaleY(.5)} }
+</style>
+</head>
+<body>
+<div id="splash">
+  <div id="splash-logo">InstaSunx</div>
+  <div id="splash-dot"></div>
+</div>
+
+<!-- ════════════ AUTH ════════════ -->
+<div id="s-auth" class="screen">
+  <div class="auth-bg"><canvas id="matrix-canvas"></canvas></div>
+  <div class="auth-logo">InstaSunx</div>
+  <div class="auth-tagline">Agusunx &middot; Social Red</div>
+  <div class="auth-card">
+    <div class="auth-tabs">
+      <div class="auth-tab active" onclick="authTab('login')">Entrar</div>
+      <div class="auth-tab" onclick="authTab('register')">Registrarse</div>
+    </div>
+    <!-- Login -->
+    <div id="p-login" class="auth-panel active">
+      <input class="inp" id="l-user" type="text" placeholder="Usuario o email" autocomplete="username" autocapitalize="none">
+      <input class="inp" id="l-pass" type="password" placeholder="Contraseña" autocomplete="current-password">
+      <div class="auth-err" id="l-err"></div>
+      <button class="btn btn-acc" onclick="doLogin()">Entrar</button>
+    </div>
+    <!-- Register -->
+    <div id="p-register" class="auth-panel">
+      <input class="inp" id="r-user" type="text" placeholder="Usuario (ej: gonza22)" autocomplete="username" autocapitalize="none">
+      <input class="inp" id="r-pass" type="password" placeholder="Contraseña (mín. 6 caracteres)" autocomplete="new-password">
+      <div class="auth-err" id="r-err"></div>
+      <button class="btn btn-acc" onclick="doRegister()">Crear cuenta</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════ MAIN (REELS) ════════════ -->
+<div id="s-main" class="screen">
+  <div class="topbar">
+    <div class="topbar-logo">InstaSunx</div>
+    <div class="topbar-actions">
+      <button class="ico-btn" onclick="refreshFeed()" title="Actualizar">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="tabs">
+    <button class="tab active" onclick="switchFeedTab('parati',this)">Para vos</button>
+    <button class="tab" onclick="switchFeedTab('trending',this)">Trending 🔥</button>
+  </div>
+  <div class="feed" id="feed"></div>
+</div>
+
+<!-- ════════════ INBOX ════════════ -->
+<div id="s-inbox" class="screen">
+  <div class="topbar">
+    <div class="topbar-logo">Mensajes</div>
+    <button class="ico-btn" onclick="showAmigos()" title="Buscar amigos">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+    </button>
+  </div>
+  <div class="inbox-list" id="inbox-list"></div>
+</div>
+
+<!-- ════════════ CHAT ════════════ -->
+<div id="s-chat" class="screen">
+  <div class="chat-hdr">
+    <button class="chat-back" onclick="goBack()">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
+    <div class="chat-hdr-av" id="chat-hdr-av"></div>
+    <div class="chat-hdr-info">
+      <div class="chat-hdr-name" id="chat-hdr-name"></div>
+      <div class="chat-hdr-status" id="chat-hdr-status">activo</div>
+    </div>
+    <button class="ico-btn" onclick="openSendReelSheet(null)" title="Enviar reel">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+    </button>
+  </div>
+  <div class="reply-bar" id="reply-bar">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2"><polyline points="9 11 5 7 9 3"/><path d="M5 7h11a4 4 0 0 1 4 4v5"/></svg>
+    <div class="reply-bar-text" id="reply-bar-text">Respondiendo...</div>
+    <button class="reply-bar-close" onclick="cancelReply()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <div class="chat-msgs" id="chat-msgs"></div>
+  <div class="chat-input-bar">
+    <!-- Input file oculto para imágenes -->
+    <input type="file" id="img-input" accept="image/*" style="display:none" onchange="onImgSelected(this)">
+    <button class="nudge-btn" id="nudge-btn" onclick="sendNudge()" title="Zumbido">📳</button>
+    <button class="chat-attach-btn" onclick="document.getElementById('img-input').click()" title="Imagen">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+    </button>
+    <textarea class="chat-inp" id="chat-inp" placeholder="Escribí un mensaje..." rows="1" oninput="autoResize(this)" onkeydown="chatKeydown(event)"></textarea>
+    <button class="mic-btn" id="mic-btn"
+      ontouchstart="micStart(event)" ontouchend="micEnd(event)"
+      onmousedown="micStart(event)" onmouseup="micEnd(event)" onmouseleave="micEnd(event)"
+      title="Audio">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+    </button>
+    <button class="send-msg-btn" id="send-msg-btn" onclick="sendMsg()" disabled>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+    </button>
+  </div>
+
+  <!-- View-once picker -->
+  <div class="view-once-sheet" id="view-once-sheet" style="display:none">
+    <div class="vo-overlay" onclick="cancelViewOnce()"></div>
+    <div class="vo-card">
+      <div class="vo-preview"><img id="vo-preview-img" src="" alt=""></div>
+      <div class="vo-title">¿Cómo enviar?</div>
+      <div class="vo-options">
+        <button class="vo-btn" onclick="confirmSendImg(false)">
+          <span style="font-size:22px">🖼️</span>
+          <span>Normal</span>
+          <small>Se puede ver siempre</small>
+        </button>
+        <button class="vo-btn vo-btn-once" onclick="confirmSendImg(true)">
+          <span style="font-size:22px">🔥</span>
+          <span>Ver una vez</span>
+          <small>Desaparece al verla</small>
+        </button>
+      </div>
+      <button class="vo-cancel" onclick="cancelViewOnce()">Cancelar</button>
+    </div>
+  </div>
+
+  <!-- Audio preview -->
+  <div class="audio-preview" id="audio-preview" style="display:none">
+    <div class="vo-overlay" onclick="cancelAudio()"></div>
+    <div class="vo-card">
+      <div class="vo-title" style="margin-bottom:16px">Audio grabado</div>
+      <audio id="audio-playback" controls style="width:100%;border-radius:8px;margin-bottom:16px"></audio>
+      <div style="display:flex;gap:10px">
+        <button class="vo-cancel" style="flex:1" onclick="cancelAudio()">Descartar</button>
+        <button class="vo-btn vo-btn-once" style="flex:1;flex-direction:row;gap:8px;padding:14px" onclick="confirmSendAudio()">
+          <span>Enviar</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Grabando... indicator -->
+  <div class="recording-bar" id="recording-bar" style="display:none">
+    <div class="rec-dot"></div>
+    <span>Grabando... Soltá para terminar</span>
+    <span id="rec-timer">0:00</span>
+  </div>
+</div>
+
+<!-- ════════════ AMIGOS ════════════ -->
+<div id="s-amigos" class="screen">
+  <div class="topbar">
+    <div class="topbar-logo">Amigos</div>
+    <button class="ico-btn" onclick="goBack()">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <div class="search-bar">
+    <div class="search-wrap">
+      <input class="search-inp" id="search-inp" placeholder="Buscar por usuario..." oninput="searchUsers(this.value)" autocapitalize="none">
+      <div class="search-results" id="search-results"></div>
+    </div>
+  </div>
+  <div class="amigos-scroll" id="amigos-scroll"></div>
+</div>
+
+<!-- ════════════ PERFIL ════════════ -->
+<div id="s-perfil" class="screen">
+  <div class="topbar">
+    <div class="topbar-logo">Mi perfil</div>
+  </div>
+  <div class="perfil-scroll" id="perfil-scroll"></div>
+</div>
+
+<!-- ════════════ BOTTOM NAV ════════════ -->
+<div class="bottom-nav" id="bottom-nav">
+  <button class="nav-btn active" id="nav-main" onclick="navTo('main',this)">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+    <span class="nav-lbl">Reels</span>
+  </button>
+  <button class="nav-btn" id="nav-inbox" onclick="navTo('inbox',this)">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+    <span class="nav-lbl">Mensajes</span>
+    <span class="badge" id="msg-badge" style="display:none">0</span>
+  </button>
+  <button class="nav-btn" id="nav-amigos" onclick="navTo('amigos',this)">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+    <span class="nav-lbl">Amigos</span>
+    <span class="badge" id="req-badge" style="display:none">0</span>
+  </button>
+  <button class="nav-btn" id="nav-perfil" onclick="navTo('perfil',this)">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+    <span class="nav-lbl">Perfil</span>
+  </button>
+</div>
+
+<!-- ════════════ SHEET ENVIAR REEL ════════════ -->
+<div class="sheet-bg" id="sheet-bg" onclick="closeSheet()">
+  <div class="sheet" onclick="event.stopPropagation()">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">Enviar reel a...</div>
+    <div class="sheet-friends" id="sheet-friends"></div>
+    <button class="sheet-confirm" id="sheet-confirm" disabled onclick="confirmSend()">Enviar</button>
+  </div>
+</div>
+
+<!-- ════════════ EMOJI PICKER ════════════ -->
+<div id="emoji-backdrop" onclick="cancelReply()" style="display:none;position:fixed;inset:0;z-index:199;background:rgba(0,0,0,0.3);backdrop-filter:blur(1px)"></div>
+<div class="emoji-picker" id="emoji-picker">
+  <span class="ep-emoji" onclick="pickEmoji('❤️')">❤️</span>
+  <span class="ep-emoji" onclick="pickEmoji('😂')">😂</span>
+  <span class="ep-emoji" onclick="pickEmoji('🔥')">🔥</span>
+  <span class="ep-emoji" onclick="pickEmoji('😮')">😮</span>
+  <span class="ep-emoji" onclick="pickEmoji('👏')">👏</span>
+  <span class="ep-emoji" onclick="pickEmoji('💀')">💀</span>
+  <span class="ep-emoji" onclick="pickEmoji('😡')">😡</span>
+  <span class="ep-emoji" onclick="pickEmoji('💋')">💋</span>
+</div>
+
+<!-- (reel react picker removido — solo doble tap para like en reels) -->
+
+<!-- ════════════ PUSH NOTIF ════════════ -->
+<div class="push" id="push" onclick="clickPush()">
+  <div class="push-av" id="push-av"></div>
+  <div class="push-body">
+    <div class="push-from" id="push-from"></div>
+    <div class="push-text" id="push-text"></div>
+  </div>
+  <div class="push-thumb" id="push-thumb">🎬</div>
+</div>
+
+<!-- ════════════ TOAST ════════════ -->
+<!-- ════════════ REEL MODAL ════════════ -->
+<div id="reel-modal" onclick="if(event.target===this)closeReelModal()">
+  <button class="reel-modal-close" onclick="closeReelModal()" style="position:absolute;top:16px;right:16px;z-index:10">✕</button>
+  <div class="reel-modal-wrap">
+    <iframe id="reel-modal-iframe" src="" allow="autoplay; encrypted-media; gyroscope" playsinline></iframe>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="app.js"></script>
+
+<!-- Notif permission banner -->
+<div class="notif-banner" id="notif-banner">
+  <div style="font-size:24px;flex-shrink:0">🔔</div>
+  <div class="notif-banner-body">
+    <div class="notif-banner-title">Activá las notificaciones</div>
+    <div class="notif-banner-sub">Enteráte cuando te escriban, incluso con la app cerrada</div>
+  </div>
+  <button class="notif-banner-btn" onclick="requestNotifPermission()">Activar</button>
+  <button class="notif-banner-close" onclick="dismissNotifBanner()">✕</button>
+</div>
+
+</body>
+</html>
