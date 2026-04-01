@@ -515,6 +515,9 @@ a{color:inherit;text-decoration:none}
 .bub-audio-wave span:nth-child(6){height:8px;animation-delay:.25s}
 .bub-audio-time { font-size: 11px; color: var(--muted); flex-shrink: 0; }
 @keyframes wave-idle { 0%,100%{transform:scaleY(1)} 50%{transform:scaleY(.5)} }
+
+.tab-search-wrap { margin-left: auto; }
+.tab-search-btn { padding: 8px 12px !important; font-size: 16px; }
 </style>
 </head>
 <body>
@@ -563,6 +566,16 @@ a{color:inherit;text-decoration:none}
   <div class="tabs">
     <button class="tab active" onclick="switchFeedTab('parati',this)">Para vos</button>
     <button class="tab" onclick="switchFeedTab('trending',this)">Trending 🔥</button>
+    <div class="tab-search-wrap">
+      <button class="tab tab-search-btn" id="search-tab-btn" onclick="toggleFeedSearch()">🔍</button>
+    </div>
+  </div>
+  <div id="feed-search-bar" style="display:none;padding:6px 12px;border-bottom:1px solid var(--border);flex-shrink:0">
+    <div style="display:flex;align-items:center;gap:8px;background:var(--s2);border-radius:22px;padding:8px 14px;border:1px solid var(--border)">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input id="feed-search-inp" style="flex:1;background:none;border:none;color:var(--text);font-size:14px;font-family:'Outfit',sans-serif;outline:none" placeholder="Buscar reels... (ej: Lali, memes, gym)" oninput="searchReels(this.value)" autocapitalize="none">
+      <button id="reel-search-clear" onclick="clearFeedSearch()" style="display:none;background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:0">✕</button>
+    </div>
   </div>
   <div class="feed" id="feed"></div>
 </div>
@@ -610,8 +623,8 @@ a{color:inherit;text-decoration:none}
     </button>
     <textarea class="chat-inp" id="chat-inp" placeholder="Escribí un mensaje..." rows="1" oninput="autoResize(this)" onkeydown="chatKeydown(event)"></textarea>
     <button class="mic-btn" id="mic-btn"
-      ontouchstart="micStart(event)" ontouchend="micEnd(event)"
-      onmousedown="micStart(event)" onmouseup="micEnd(event)" onmouseleave="micEnd(event)"
+      ontouchstart="micStart(event)" ontouchmove="micMove(event)" ontouchend="micEnd(event)"
+      onmousedown="micStart(event)" onmousemove="micMove(event)" onmouseup="micEnd(event)" onmouseleave="micEnd(event)"
       title="Audio">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
     </button>
