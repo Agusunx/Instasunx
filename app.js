@@ -936,6 +936,7 @@ function onImgSelected(input) {
     document.getElementById('vo-preview-img').src = _pendingImgDataUrl;
     const sheet = document.getElementById('view-once-sheet');
     sheet.style.display = 'flex';
+    sheet.style.alignItems = 'flex-end';
   };
   reader.readAsDataURL(file);
 }
@@ -955,6 +956,7 @@ async function confirmSendImg(viewOnce) {
   const file = _pendingImgFile;
   const dataUrl = _pendingImgDataUrl;
   _pendingImgFile = null; _pendingImgDataUrl = null;
+  if (file.size > 10 * 1024 * 1024) { toast('Imagen muy grande (máx 10MB)'); return; }
 
   // Subir imagen a Supabase Storage
   toast('Subiendo imagen...');
@@ -1033,7 +1035,7 @@ async function micStart(e) {
     _mediaRecorder.start();
     document.getElementById('mic-btn').classList.add('recording');
     // Show recording bar
-    document.getElementById('recording-bar').style.display = 'flex';
+    document.getElementById('recording-bar').classList.add('show');
     _recSeconds = 0;
     _recTimer = setInterval(() => {
       _recSeconds++;
@@ -1051,7 +1053,7 @@ function micEnd(e) {
   if (!_mediaRecorder || _mediaRecorder.state === 'inactive') return;
   clearInterval(_recTimer);
   document.getElementById('mic-btn').classList.remove('recording');
-  document.getElementById('recording-bar').style.display = 'none';
+  document.getElementById('recording-bar').classList.remove('show');
   if (_recSeconds < 1) {
     // Muy corto — cancelar
     _mediaRecorder.stop();
@@ -1066,7 +1068,12 @@ function _showAudioPreview() {
   if (!_audioBlob) return;
   const url = URL.createObjectURL(_audioBlob);
   document.getElementById('audio-playback').src = url;
-  document.getElementById('audio-preview').style.display = 'flex';
+  const preview = document.getElementById('audio-preview');
+  preview.style.display = 'flex';
+  preview.style.alignItems = 'flex-end';
+  const dur = _recSeconds;
+  const durLabel = document.getElementById('audio-dur-label');
+  if (durLabel) durLabel.textContent = `${dur}s grabado`;
 }
 
 function cancelAudio() {
@@ -1118,7 +1125,7 @@ async function confirmSendAudio() {
       to_id: currentChatFriend.id,
       type: 'audio',
       content: audioUrl,
-      reel_title: `${dur}s`, // reusar campo para duración
+      reel_title: `${_recSeconds || dur}s`,
     });
     await loadChatMessages(currentChatFriend.id, true);
   } catch(e) {
