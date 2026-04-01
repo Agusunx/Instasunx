@@ -1087,9 +1087,12 @@ function cancelAudio() {
 
 async function confirmSendAudio() {
   if (!_audioBlob || !currentChatFriend) return;
-  document.getElementById('audio-preview').style.display = 'none';
+  // Ocultar preview inmediatamente para liberar la UI
+  const preview = document.getElementById('audio-preview');
+  preview.style.display = 'none';
   document.getElementById('audio-playback').pause();
   const blob = _audioBlob;
+  const durSec = _recSeconds || 1;
   _audioBlob = null; _audioChunks = [];
   toast('Enviando audio...');
   try {
@@ -1119,13 +1122,13 @@ async function confirmSendAudio() {
         r.readAsDataURL(blob);
       });
     }
-    const dur = Math.max(1, _recSeconds);
+    // durSec ya capturado arriba
     await sb.post('messages', {
       from_id: ME.id,
       to_id: currentChatFriend.id,
       type: 'audio',
       content: audioUrl,
-      reel_title: `${_recSeconds || dur}s`,
+      reel_title: `${durSec}s`,  // duración capturada antes de reset
     });
     await loadChatMessages(currentChatFriend.id, true);
   } catch(e) {
@@ -1189,7 +1192,7 @@ function buildMsgBubble(m, prev) {
     const dur = m.reel_title || '';
     const safeUrl = escHtml(m.content||'');
     content = `<div class="bub-audio">
-      <button class="bub-audio-btn" onclick="playBubAudio('${m.id}','${safeUrl}',this)">${playIcon()}</button>
+      <button class="bub-audio-btn" onpointerdown="event.preventDefault()" onclick="playBubAudio('${m.id}','${safeUrl}',this)">${playIcon()}</button>
       <div class="bub-audio-wave">
         <span></span><span></span><span></span><span></span><span></span><span></span>
       </div>
@@ -1207,8 +1210,26 @@ function buildMsgBubble(m, prev) {
       </div>
     </div>`;
   } else {
-    const repl=m.reply_to_text?`<div class="reply-preview">↩ ${escHtml(m.reply_to_text)}</div>`:'';
-    content=`${repl}<div class="bub">${escHtml(m.content||'')}</div>`;
+    // Fallback: detectar si el content es una URL de storage (audio/imagen enviada con tipo incorrecto)
+    const c = m.content || '';
+    const isStorageAudio = c.includes('/chat-media/audio/') || c.includes('/chat-media/audio%2F');
+    const isStorageImg   = c.includes('/chat-media/chat/') || c.includes('/chat-media/chat%2F');
+    if (isStorageAudio) {
+      const safeUrl = escHtml(c);
+      content = `<div class="bub-audio">
+        <button class="bub-audio-btn" onpointerdown="event.preventDefault()" onclick="playBubAudio('${m.id}','${safeUrl}',this)">${playIcon()}</button>
+        <div class="bub-audio-wave"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+        <span class="bub-audio-time">audio</span>
+      </div>`;
+    } else if (isStorageImg) {
+      const safeUrl = escHtml(c);
+      content = `<div class="bub-img" onclick="openChatImage('${m.id}','${safeUrl}',false)">
+        <img src="${safeUrl}" alt="imagen" loading="lazy" style="max-width:220px;max-height:300px;border-radius:14px;display:block">
+      </div>`;
+    } else {
+      const repl=m.reply_to_text?`<div class="reply-preview">↩ ${escHtml(m.reply_to_text)}</div>`:'';
+      content=`${repl}<div class="bub">${escHtml(m.content||'')}</div>`;
+    }
   }
   const reactions=m.reactions||[];
   let reactHtml='';
@@ -1241,8 +1262,6 @@ async function sendMsg() {
   if (!text || !currentChatFriend) return;
   inp.value = ''; inp.style.height = 'auto';
   document.getElementById('send-msg-btn').disabled = true;
-  // Mantener teclado abierto: re-enfocar después del envío
-  const keepFocus = () => { inp.focus(); };
   await sb.post('messages', {
     from_id: ME.id, to_id: currentChatFriend.id,
     type: 'text', content: text,
@@ -1251,7 +1270,8 @@ async function sendMsg() {
   }).catch(e => console.error(e));
   cancelReply();
   await loadChatMessages(currentChatFriend.id, true);
-  keepFocus();
+  // Re-enfocar sin parpadeo usando rAF
+  requestAnimationFrame(() => inp.focus());
 }
 
 async function sendReelMsg(toId, video) {
@@ -1317,12 +1337,6 @@ function cancelReply(){
   document.getElementById('reply-bar').classList.remove('show');
   document.getElementById('emoji-picker').classList.remove('show');
   document.getElementById('emoji-backdrop').style.display = 'none';
-  // Mantener foco en el input para no cerrar el teclado
-  const inp = document.getElementById('chat-inp');
-  if (inp && document.activeElement !== inp) {
-    // Solo re-enfocar si estábamos en el chat
-    if (currentScreen === 'chat') setTimeout(() => inp.focus(), 50);
-  }
 }
 
 async function reactToMsg(msgId, emoji) {
