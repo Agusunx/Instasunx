@@ -314,22 +314,59 @@ function getLikedChannels() {
   return Object.entries(freq).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([c])=>c);
 }
 
+// Custom search query set by user
+let _feedCustomQuery = null;
+
 function getPersonalizedQuery(tab) {
+  // Si hay búsqueda personalizada activa, usarla
+  if (_feedCustomQuery) return _feedCustomQuery;
+
   if (tab === 'parati') {
     const liked = getLikedChannels();
-    // 40% de las veces usa un canal que le gustó
     if (liked.length && Math.random() < 0.4) {
       const ch = liked[Math.floor(Math.random()*liked.length)];
       return `${ch} shorts`;
     }
   }
   const queries = YT_QUERIES[tab] || YT_QUERIES.parati;
-  // Evitar repetir la misma query consecutiva
   const prev = getPersonalizedQuery._last;
   let q;
   do { q = queries[Math.floor(Math.random()*queries.length)]; } while (q === prev && queries.length > 1);
   getPersonalizedQuery._last = q;
   return q;
+}
+
+
+function toggleFeedSearch() {
+  const bar = document.getElementById('feed-search-bar');
+  const inp = document.getElementById('feed-search-inp');
+  const btn = document.getElementById('search-tab-btn');
+  const visible = bar.style.display !== 'none';
+  bar.style.display = visible ? 'none' : 'block';
+  if (!visible) {
+    inp.focus();
+    btn.style.color = 'var(--acc)';
+  } else {
+    clearFeedSearch();
+    btn.style.color = '';
+  }
+}
+
+function clearFeedSearch() {
+  document.getElementById('feed-search-inp').value = '';
+  searchReels('');
+}
+
+function searchReels(query) {
+  const q = query.trim();
+  if (!q) {
+    _feedCustomQuery = null;
+    document.getElementById('reel-search-clear')?.style.setProperty('display', 'none');
+  } else {
+    _feedCustomQuery = q + ' shorts';
+    document.getElementById('reel-search-clear')?.style.setProperty('display', 'flex');
+  }
+  loadFeed(feedTab);
 }
 
 async function ytSearch(query, pageToken = '') {
@@ -998,16 +1035,99 @@ async function confirmSendImg(viewOnce) {
 // Abrir imagen al tocarla (y marcar view-once como vista)
 async function openChatImage(msgId, url, isOnce) {
   if (isOnce) {
-    // Marcar como vista actualizando el tipo del mensaje
     await sb.patch('messages', `?id=eq.${msgId}`, { type: 'image_seen' }).catch(() => {});
   }
-  // Abrir imagen en overlay
+
+  // Push state for back button support
+  history.pushState({ imgOverlay: true }, '');
+
   const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;z-index:999;background:rgba(0,0,0,.95);display:flex;align-items:center;justify-content:center;cursor:zoom-out';
-  overlay.innerHTML = `<img src="${url}" style="max-width:95vw;max-height:90vh;border-radius:12px;object-fit:contain">`;
-  overlay.onclick = () => { overlay.remove(); if (isOnce) loadChatMessages(currentChatFriend.id, false); };
+  overlay.id = 'img-overlay';
+  overlay.style.cssText = `position:fixed;inset:0;z-index:999;background:rgba(0,0,0,.97);
+    display:flex;align-items:center;justify-content:center;touch-action:none;`;
+
+  overlay.innerHTML = `
+    <button onclick="closeImgOverlay()" style="position:absolute;top:16px;right:16px;z-index:10;
+      background:rgba(255,255,255,.12);border:none;color:#fff;width:40px;height:40px;
+      border-radius:50%;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</button>
+    <img id="overlay-img" src="${url}" style="max-width:95vw;max-height:90vh;object-fit:contain;
+      border-radius:8px;transform-origin:center;transition:transform 0.1s;user-select:none;touch-action:none">
+  `;
   document.body.appendChild(overlay);
+
+  // Pinch-to-zoom
+  const img = overlay.querySelector('#overlay-img');
+  let scale = 1, startDist = 0, startScale = 1;
+  let panX = 0, panY = 0, startPanX = 0, startPanY = 0;
+  let lastTap = 0;
+
+  function applyTransform() {
+    img.style.transform = `translate(${panX}px,${panY}px) scale(${scale})`;
+  }
+
+  overlay.addEventListener('touchstart', e => {
+    if (e.touches.length === 2) {
+      startDist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      startScale = scale;
+    } else if (e.touches.length === 1 && scale > 1) {
+      startPanX = e.touches[0].clientX - panX;
+      startPanY = e.touches[0].clientY - panY;
+    }
+    // Double tap to zoom
+    const now = Date.now();
+    if (now - lastTap < 300 && e.touches.length === 1) {
+      scale = scale > 1 ? 1 : 2.5;
+      panX = 0; panY = 0;
+      img.style.transition = 'transform .25s';
+      applyTransform();
+      setTimeout(() => img.style.transition = 'transform .1s', 260);
+    }
+    lastTap = now;
+  }, { passive: true });
+
+  overlay.addEventListener('touchmove', e => {
+    e.preventDefault();
+    if (e.touches.length === 2) {
+      const dist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      scale = Math.max(1, Math.min(5, startScale * (dist / startDist)));
+      applyTransform();
+    } else if (e.touches.length === 1 && scale > 1) {
+      panX = e.touches[0].clientX - startPanX;
+      panY = e.touches[0].clientY - startPanY;
+      applyTransform();
+    }
+  }, { passive: false });
+
+  // Single tap to close (only when not zoomed)
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay && scale <= 1) closeImgOverlay();
+  });
+
+  window._imgOverlayOnce = isOnce;
 }
+
+function closeImgOverlay() {
+  const overlay = document.getElementById('img-overlay');
+  if (!overlay) return;
+  overlay.remove();
+  if (window._imgOverlayOnce && currentChatFriend)
+    loadChatMessages(currentChatFriend.id, false);
+  window._imgOverlayOnce = false;
+  // Pop state si fue abierto con pushState
+  if (history.state?.imgOverlay) history.back();
+}
+
+// Interceptar botón atrás del celular
+window.addEventListener('popstate', e => {
+  const overlay = document.getElementById('img-overlay');
+  if (overlay) { overlay.remove(); if (window._imgOverlayOnce && currentChatFriend) loadChatMessages(currentChatFriend.id, false); window._imgOverlayOnce = false; }
+});
 
 // ══════════════════════════════════════════════════════════
 //  AUDIO EN CHAT
@@ -1019,9 +1139,14 @@ let _audioBlob = null;
 let _recTimer = null;
 let _recSeconds = 0;
 
+let _micLocked = false;
+let _micStartY = 0;
+
 async function micStart(e) {
   e.preventDefault();
   if (_mediaRecorder) return;
+  _micLocked = false;
+  _micStartY = (e.touches?.[0] || e).clientY;
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     _audioChunks = [];
@@ -1029,39 +1154,90 @@ async function micStart(e) {
     _mediaRecorder.ondataavailable = ev => { if (ev.data.size > 0) _audioChunks.push(ev.data); };
     _mediaRecorder.onstop = () => {
       stream.getTracks().forEach(t => t.stop());
-      _audioBlob = new Blob(_audioChunks, { type: 'audio/webm' });
-      _showAudioPreview();
+      if (_audioChunks.length) {
+        _audioBlob = new Blob(_audioChunks, { type: 'audio/webm' });
+        _showAudioPreview();
+      }
     };
     _mediaRecorder.start();
     document.getElementById('mic-btn').classList.add('recording');
-    // Show recording bar
     document.getElementById('recording-bar').classList.add('show');
     _recSeconds = 0;
     _recTimer = setInterval(() => {
       _recSeconds++;
       const m = Math.floor(_recSeconds / 60), s = _recSeconds % 60;
       document.getElementById('rec-timer').textContent = `${m}:${s.toString().padStart(2,'0')}`;
-      if (_recSeconds >= 60) micEnd(e); // max 1 minuto
+      if (_recSeconds >= 120) _stopRecording(); // max 2 min
     }, 1000);
   } catch(e) {
     toast('Necesitás dar permiso al micrófono');
   }
 }
 
+function micMove(e) {
+  if (!_mediaRecorder || _micLocked) return;
+  const y = (e.touches?.[0] || e).clientY;
+  const dy = _micStartY - y; // positivo = deslizó arriba
+  const btn = document.getElementById('mic-btn');
+  const bar = document.getElementById('recording-bar');
+  if (dy > 50) {
+    // Bloquear grabación
+    _micLocked = true;
+    btn.classList.remove('recording');
+    btn.style.opacity = '0.3';
+    // Cambiar bar a modo bloqueado con botón detener
+    bar.innerHTML = `<div class="rec-dot"></div>
+      <span style="flex:1">🔒 Grabando — tocá para detener</span>
+      <span id="rec-timer">${document.getElementById('rec-timer')?.textContent || '0:00'}</span>
+      <button onclick="_stopRecording()" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:700;cursor:pointer;margin-left:8px;font-family:'Outfit',sans-serif">■ Detener</button>`;
+    if (navigator.vibrate) navigator.vibrate(40);
+  } else if (dy < -30) {
+    // Deslizó hacia abajo → cancelar
+    _cancelRecording();
+  } else {
+    // Mostrar hint visual de cuánto falta para bloquear
+    const pct = Math.max(0, Math.min(1, dy / 50));
+    btn.style.transform = `translateY(-${dy > 0 ? dy * 0.4 : 0}px) scale(${1 + pct * 0.15})`;
+  }
+}
+
 function micEnd(e) {
-  e.preventDefault();
+  if (!_mediaRecorder) return;
+  e?.preventDefault?.();
+  const btn = document.getElementById('mic-btn');
+  btn.style.transform = '';
+  if (_micLocked) return; // bloqueado → el usuario toca "Detener"
+  // Soltó sin bloquear
+  if (_recSeconds < 1) { _cancelRecording(); return; }
+  _stopRecording();
+}
+
+function _stopRecording() {
   if (!_mediaRecorder || _mediaRecorder.state === 'inactive') return;
   clearInterval(_recTimer);
-  document.getElementById('mic-btn').classList.remove('recording');
+  const btn = document.getElementById('mic-btn');
+  btn.classList.remove('recording');
+  btn.style.opacity = '';
+  btn.style.transform = '';
   document.getElementById('recording-bar').classList.remove('show');
-  if (_recSeconds < 1) {
-    // Muy corto — cancelar
-    _mediaRecorder.stop();
-    _mediaRecorder = null;
-    return;
-  }
   _mediaRecorder.stop();
   _mediaRecorder = null;
+  _micLocked = false;
+}
+
+function _cancelRecording() {
+  if (!_mediaRecorder) return;
+  clearInterval(_recTimer);
+  _audioChunks = []; // vaciar para que onstop no muestre preview
+  const btn = document.getElementById('mic-btn');
+  btn.classList.remove('recording');
+  btn.style.opacity = '';
+  btn.style.transform = '';
+  document.getElementById('recording-bar').classList.remove('show');
+  _mediaRecorder.stop();
+  _mediaRecorder = null;
+  _micLocked = false;
+  toast('Audio cancelado');
 }
 
 function _showAudioPreview() {
@@ -1182,10 +1358,18 @@ function buildMsgBubble(m, prev) {
       </div>`;
     } else if (isSeen && !isMe) {
       content = `<div style="padding:10px 14px;background:var(--s2);border-radius:14px;font-size:12px;color:var(--muted)">🔥 Imagen vista</div>`;
+    } else if (isOnce && isMe) {
+      // Sender sees their own view-once as blurred too
+      content = `<div class="bub-img" style="position:relative;max-width:200px;height:160px;background:var(--s3);border-radius:14px;overflow:hidden">
+        <img src="${escHtml(m.content||'')}" style="width:100%;height:100%;object-fit:cover;filter:blur(20px);transform:scale(1.1)" alt="">
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px">
+          <span style="font-size:22px">🔥</span>
+          <span style="font-size:12px;font-weight:700;color:#fff">Enviaste: ver una vez</span>
+        </div>
+      </div>`;
     } else {
-      content = `<div class="bub-img" onclick="openChatImage('${m.id}','${escHtml(m.content||'')}',false)" style="${isSeen&&isMe?'opacity:.6':''}">
+      content = `<div class="bub-img" onclick="openChatImage('${m.id}','${escHtml(m.content||'')}',false)" style="${isSeen&&isMe?'opacity:.5':''}">
         <img src="${escHtml(m.content||'')}" alt="imagen" loading="lazy" style="max-width:220px;max-height:300px;border-radius:14px;display:block">
-        ${isOnce&&isMe?`<div style="font-size:10px;color:var(--muted);padding:4px 0;text-align:center">🔥 Ver una vez</div>`:''}
       </div>`;
     }
   } else if (m.type==='audio') {
@@ -1382,12 +1566,12 @@ function openMsgMenu(mid, txt, replyOnly=false) {
 //  TEMAS DE COLOR
 // ══════════════════════════════════════════════════════════
 const THEMES = {
-  dark:   { name:'🌑 Oscuro',     bg:'#050507', s1:'#0e0e12', s2:'#17171d', s3:'#202028', s4:'#2a2a35', acc:'#ff2d55', text:'#f0f0f5', muted:'#8e8e9e', border:'rgba(255,255,255,0.08)' },
-  pink:   { name:'🌸 Rosa',       bg:'#1a0a14', s1:'#2d1020', s2:'#3d1530', s3:'#4d1a3a', s4:'#5d2048', acc:'#ff6eb4', text:'#ffe0f0', muted:'#c47090', border:'rgba(255,110,180,0.15)' },
-  ocean:  { name:'🌊 Océano',     bg:'#020d1a', s1:'#041828', s2:'#062035', s3:'#083045', s4:'#0a4060', acc:'#00bfff', text:'#e0f4ff', muted:'#5599bb', border:'rgba(0,191,255,0.12)' },
-  forest: { name:'🌿 Bosque',     bg:'#020d05', s1:'#051a0a', s2:'#082810', s3:'#0c3815', s4:'#10481c', acc:'#2ecc71', text:'#e0ffe8', muted:'#55aa77', border:'rgba(46,204,113,0.12)' },
-  sunset: { name:'🌅 Atardecer',  bg:'#150a00', s1:'#251200', s2:'#351a00', s3:'#452400', s4:'#553000', acc:'#ff8c00', text:'#fff0e0', muted:'#bb8844', border:'rgba(255,140,0,0.12)'  },
-  matrix: { name:'💚 Matrix',     bg:'#000000', s1:'#001200', s2:'#001a00', s3:'#002500', s4:'#003000', acc:'#00ff41', text:'#ccffcc', muted:'#448844', border:'rgba(0,255,65,0.12)'  },
+  dark:   { name:'Oscuro',    icon:'⬛', desc:'Clásico',     bg:'#050507', s1:'#0e0e12', s2:'#17171d', s3:'#202028', s4:'#2a2a35', acc:'#ff2d55', text:'#f0f0f5', muted:'#8e8e9e', border:'rgba(255,255,255,0.08)' },
+  pink:   { name:'Rosa',      icon:'🌸', desc:'Femenino',    bg:'#120010', s1:'#1e0018', s2:'#2a0022', s3:'#36002e', s4:'#44003c', acc:'#ff4da6', text:'#ffe6f4', muted:'#bf6090', border:'rgba(255,77,166,0.18)' },
+  ocean:  { name:'Océano',    icon:'🌊', desc:'Profundo',    bg:'#00060f', s1:'#001020', s2:'#001830', s3:'#002040', s4:'#003050', acc:'#00b4ff', text:'#d0eeff', muted:'#4488aa', border:'rgba(0,180,255,0.15)' },
+  forest: { name:'Bosque',    icon:'🌿', desc:'Natural',     bg:'#010a03', s1:'#031508', s2:'#051e0c', s3:'#082811', s4:'#0c3416', acc:'#1fd860', text:'#d0ffd8', muted:'#40996a', border:'rgba(31,216,96,0.14)' },
+  sunset: { name:'Atardecer', icon:'🌅', desc:'Cálido',      bg:'#0d0300', s1:'#1a0800', s2:'#260f00', s3:'#321600', s4:'#401e00', acc:'#ff7700', text:'#fff0d8', muted:'#bb7744', border:'rgba(255,119,0,0.15)' },
+  matrix: { name:'Matrix',    icon:'💚', desc:'Hacker',      bg:'#000000', s1:'#001200', s2:'#001a00', s3:'#002500', s4:'#003000', acc:'#00ff41', text:'#bbffcc', muted:'#339944', border:'rgba(0,255,65,0.14)' },
 };
 
 function applyTheme(key) {
@@ -1412,14 +1596,23 @@ function renderPerfil() {
   const saved = Object.values(savedVideos);
   const currentTheme = localStorage.getItem('isx_theme_' + ME.id) || 'dark';
 
-  const themeButtons = Object.entries(THEMES).map(([key, t]) =>
-    `<button onclick="applyTheme('${key}');renderPerfil()" style="
-      flex:1;min-width:calc(33% - 6px);padding:10px 4px;border-radius:12px;
-      background:${t.bg};border:2px solid ${key===currentTheme ? t.acc : 'transparent'};
-      color:${t.text};font-size:12px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif;
-      transition:border-color .2s;text-align:center
-    ">${t.name}</button>`
-  ).join('');
+  const themeButtons = Object.entries(THEMES).map(([key, t]) => {
+    const active = key === currentTheme;
+    return `<button onclick="applyTheme('${key}');renderPerfil()" style="
+      position:relative;flex:none;width:calc(33.3% - 6px);aspect-ratio:1;border-radius:16px;
+      background:${t.bg};border:2px solid ${active ? t.acc : 'rgba(255,255,255,0.06)'};
+      cursor:pointer;font-family:'Outfit',sans-serif;overflow:hidden;
+      box-shadow:${active ? `0 0 16px ${t.acc}55` : 'none'};transition:all .2s;
+    ">
+      <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:8px">
+        <span style="font-size:24px">${t.icon}</span>
+        <span style="font-size:11px;font-weight:700;color:${t.text}">${t.name}</span>
+        <span style="font-size:10px;color:${t.muted}">${t.desc}</span>
+      </div>
+      <div style="position:absolute;bottom:0;left:0;right:0;height:3px;background:${t.acc};opacity:${active?1:.3}"></div>
+      ${active ? `<div style="position:absolute;top:6px;right:6px;width:8px;height:8px;border-radius:50%;background:${t.acc};box-shadow:0 0 6px ${t.acc}"></div>` : ''}
+    </button>`;
+  }).join('');
 
   c.innerHTML = `
     <div class="perfil-hdr">
