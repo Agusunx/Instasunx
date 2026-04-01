@@ -472,18 +472,19 @@ a{color:inherit;text-decoration:none}
 
 /* ── Recording bar ─── */
 .recording-bar {
-  position: absolute; bottom: 0; left: 0; right: 0;
-  background: rgba(255,45,85,.95); backdrop-filter: blur(10px);
-  padding: 12px 16px; display: flex; align-items: center; gap: 12px;
-  font-size: 14px; font-weight: 600; color: #fff; z-index: 50;
+  position: fixed; bottom: 0; left: 0; right: 0;
+  background: rgba(200,0,0,.97); backdrop-filter: blur(10px);
+  padding: 12px 20px; display: none; align-items: center; gap: 12px;
+  font-size: 14px; font-weight: 600; color: #fff; z-index: 400;
 }
+.recording-bar.show { display: flex; }
 .rec-dot { width: 10px; height: 10px; border-radius: 50%; background: #fff; animation: rec-blink 1s ease infinite; flex-shrink: 0; }
 @keyframes rec-blink { 0%,100%{opacity:1} 50%{opacity:.2} }
 
 /* ── View-once + Audio sheet ─── */
-.view-once-sheet, .audio-preview { position: absolute; inset: 0; z-index: 100; display: flex !important; align-items: flex-end; }
+.view-once-sheet, .audio-preview { position: fixed; inset: 0; z-index: 300; display: none; align-items: flex-end; }
 .vo-overlay { position: absolute; inset: 0; background: rgba(0,0,0,.6); }
-.vo-card { position: relative; background: var(--s1); border-radius: 24px 24px 0 0; padding: 24px 20px; width: 100%; }
+.vo-card { position: relative; background: var(--s1); border-radius: 20px 20px 0 0; padding: 20px 18px; width: 100%; max-height: 90vh; overflow-y: auto; }
 .vo-preview { width: 100%; max-height: 200px; overflow: hidden; border-radius: 12px; margin-bottom: 16px; }
 .vo-preview img { width: 100%; height: 200px; object-fit: cover; }
 .vo-title { font-size: 15px; font-weight: 700; text-align: center; margin-bottom: 16px; }
@@ -619,50 +620,7 @@ a{color:inherit;text-decoration:none}
     </button>
   </div>
 
-  <!-- View-once picker -->
-  <div class="view-once-sheet" id="view-once-sheet" style="display:none">
-    <div class="vo-overlay" onclick="cancelViewOnce()"></div>
-    <div class="vo-card">
-      <div class="vo-preview"><img id="vo-preview-img" src="" alt=""></div>
-      <div class="vo-title">¿Cómo enviar?</div>
-      <div class="vo-options">
-        <button class="vo-btn" onclick="confirmSendImg(false)">
-          <span style="font-size:22px">🖼️</span>
-          <span>Normal</span>
-          <small>Se puede ver siempre</small>
-        </button>
-        <button class="vo-btn vo-btn-once" onclick="confirmSendImg(true)">
-          <span style="font-size:22px">🔥</span>
-          <span>Ver una vez</span>
-          <small>Desaparece al verla</small>
-        </button>
-      </div>
-      <button class="vo-cancel" onclick="cancelViewOnce()">Cancelar</button>
-    </div>
-  </div>
 
-  <!-- Audio preview -->
-  <div class="audio-preview" id="audio-preview" style="display:none">
-    <div class="vo-overlay" onclick="cancelAudio()"></div>
-    <div class="vo-card">
-      <div class="vo-title" style="margin-bottom:16px">Audio grabado</div>
-      <audio id="audio-playback" controls style="width:100%;border-radius:8px;margin-bottom:16px"></audio>
-      <div style="display:flex;gap:10px">
-        <button class="vo-cancel" style="flex:1" onclick="cancelAudio()">Descartar</button>
-        <button class="vo-btn vo-btn-once" style="flex:1;flex-direction:row;gap:8px;padding:14px" onclick="confirmSendAudio()">
-          <span>Enviar</span>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Grabando... indicator -->
-  <div class="recording-bar" id="recording-bar" style="display:none">
-    <div class="rec-dot"></div>
-    <span>Grabando... Soltá para terminar</span>
-    <span id="rec-timer">0:00</span>
-  </div>
 </div>
 
 <!-- ════════════ AMIGOS ════════════ -->
@@ -771,5 +729,58 @@ a{color:inherit;text-decoration:none}
   <button class="notif-banner-close" onclick="dismissNotifBanner()">✕</button>
 </div>
 
+
+<!-- ════════════ IMAGE PICKER ════════════ -->
+<div class="view-once-sheet" id="view-once-sheet">
+  <div class="vo-overlay" onclick="cancelViewOnce()"></div>
+  <div class="vo-card">
+    <div class="vo-preview"><img id="vo-preview-img" src="" alt=""></div>
+    <div class="vo-title">¿Cómo enviar?</div>
+    <div class="vo-options">
+      <button class="vo-btn" onclick="confirmSendImg(false)">
+        <span style="font-size:22px">🖼️</span>
+        <span>Normal</span>
+        <small>Siempre visible</small>
+      </button>
+      <button class="vo-btn vo-btn-once" onclick="confirmSendImg(true)">
+        <span style="font-size:22px">🔥</span>
+        <span>Ver una vez</span>
+        <small>Desaparece al abrirla</small>
+      </button>
+    </div>
+    <button class="vo-cancel" onclick="cancelViewOnce()">Cancelar</button>
+  </div>
+</div>
+
+<!-- ════════════ AUDIO PREVIEW ════════════ -->
+<div class="audio-preview" id="audio-preview">
+  <div class="vo-overlay" onclick="cancelAudio()"></div>
+  <div class="vo-card" style="padding:20px">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+      <div style="width:40px;height:40px;border-radius:50%;background:rgba(255,45,85,.15);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--acc)" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+      </div>
+      <div>
+        <div style="font-size:15px;font-weight:700">Audio grabado</div>
+        <div style="font-size:12px;color:var(--muted)" id="audio-dur-label">Listo para enviar</div>
+      </div>
+    </div>
+    <audio id="audio-playback" controls style="width:100%;height:36px;border-radius:8px;margin-bottom:14px;accent-color:var(--acc)"></audio>
+    <div style="display:flex;gap:10px">
+      <button class="vo-cancel" style="flex:1;padding:12px" onclick="cancelAudio()">Descartar</button>
+      <button onclick="confirmSendAudio()" style="flex:2;padding:12px;background:var(--acc);color:#fff;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;display:flex;align-items:center;justify-content:center;gap:8px">
+        Enviar
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════ RECORDING BAR ════════════ -->
+<div class="recording-bar" id="recording-bar">
+  <div class="rec-dot"></div>
+  <span>Grabando... soltá para terminar</span>
+  <span id="rec-timer">0:00</span>
+</div>
 </body>
 </html>
