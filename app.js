@@ -302,29 +302,66 @@ function showAmigos() {
 //  YOUTUBE API
 // ══════════════════════════════════════════════════════════
 // ── IDs ya mostrados (evita repetición) ──────────────────
-const seenVideoIds = new Set();
+// Persist seen video IDs across sessions (max 500 IDs)
+const _SEEN_KEY = 'isx_seen_v2';
+function _loadSeen() {
+  try { return new Set(JSON.parse(localStorage.getItem(_SEEN_KEY) || '[]')); } catch { return new Set(); }
+}
+function _saveSeen(set) {
+  const arr = [...set];
+  // Keep only last 500
+  localStorage.setItem(_SEEN_KEY, JSON.stringify(arr.slice(-500)));
+}
+const seenVideoIds = _loadSeen();
+function _addSeen(id) { seenVideoIds.add(id); _saveSeen(seenVideoIds); }
 
 // ── Intereses aprendidos del usuario ─────────────────────
 function getLikedChannels() {
   const likes = Object.values(likedVideos);
   const channels = likes.map(l => l.channel).filter(Boolean);
-  // Devuelve los 3 canales más likeados
   const freq = {};
   channels.forEach(c => freq[c] = (freq[c]||0)+1);
-  return Object.entries(freq).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([c])=>c);
+  return Object.entries(freq).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([c])=>c);
+}
+
+// Track user interests from titles of liked/watched videos
+function getUserInterests() {
+  const stored = JSON.parse(localStorage.getItem('isx_interests_' + (ME?.id||'')) || '[]');
+  return stored;
+}
+function addInterest(keyword) {
+  if (!keyword || !ME) return;
+  const key = 'isx_interests_' + ME.id;
+  const arr = JSON.parse(localStorage.getItem(key) || '[]');
+  if (!arr.includes(keyword)) arr.unshift(keyword);
+  localStorage.setItem(key, JSON.stringify(arr.slice(0,30)));
+}
+// Extract keywords from video title
+function extractKeywords(title) {
+  if (!title) return [];
+  // Remove common stopwords and short words
+  const stop = new Set(['el','la','los','las','un','una','de','del','en','y','a','que','con','por','para','es','se','lo','le','te','me','mi','su','al']);
+  return title.toLowerCase().replace(/[^a-záéíóúüñ\s]/gi,'').split(/\s+/)
+    .filter(w => w.length > 3 && !stop.has(w)).slice(0,3);
 }
 
 // Custom search query set by user
 let _feedCustomQuery = null;
 
 function getPersonalizedQuery(tab) {
-  // Si hay búsqueda personalizada activa, usarla
   if (_feedCustomQuery) return _feedCustomQuery;
-
   if (tab === 'parati') {
-    const liked = getLikedChannels();
-    if (liked.length && Math.random() < 0.4) {
-      const ch = liked[Math.floor(Math.random()*liked.length)];
+    const interests = getUserInterests();
+    const channels = getLikedChannels();
+    const rnd = Math.random();
+    // 35% chance: use a learned interest keyword
+    if (interests.length && rnd < 0.35) {
+      const kw = interests[Math.floor(Math.random()*Math.min(interests.length,8))];
+      return `${kw} shorts`;
+    }
+    // 25% chance: use a liked channel
+    if (channels.length && rnd < 0.6) {
+      const ch = channels[Math.floor(Math.random()*channels.length)];
       return `${ch} shorts`;
     }
   }
@@ -427,7 +464,7 @@ async function fetchVideos(tab, pageToken='') {
     const videos = details
       .filter(v => parseDur(v.contentDetails?.duration) <= 180)
       .map(v => {
-        seenVideoIds.add(v.id);
+        _addSeen(v.id);
         return {
           id: v.id,
           title: v.snippet.title,
@@ -465,7 +502,7 @@ function showFeedError(msg) {
 // ══════════════════════════════════════════════════════════
 async function loadFeed(tab) {
   feedTab=tab; feedVideos=[]; feedLoading=false; feedDone=false; nextPageToken='';
-  seenVideoIds.clear();
+  seenVideoIds.clear(); // keep persistent seen intact
   ytIframeMap.clear(); // Limpiar referencias a iframes viejos
   prefetchedVideos=[];
   const feed = document.getElementById('feed');
@@ -676,9 +713,29 @@ function buildReelEl(v) {
   return div;
 }
 
+let _currentView = 'feed'; // 'feed' | 'buscar'
+
+function showFeedView() {
+  _currentView = 'feed';
+  document.getElementById('view-feed').style.display = 'flex';
+  document.getElementById('view-buscar').style.display = 'none';
+  document.getElementById('tab-feed').classList.add('active');
+  document.getElementById('tab-buscar').classList.remove('active');
+  if (!feedVideos.length) loadFeed('parati');
+}
+
+function showBuscarView() {
+  _currentView = 'buscar';
+  document.getElementById('view-feed').style.display = 'none';
+  document.getElementById('view-buscar').style.display = 'flex';
+  document.getElementById('tab-buscar').classList.add('active');
+  document.getElementById('tab-feed').classList.remove('active');
+  loadBuscarGrid();
+}
+
+// Legacy — keep parati working
 function switchFeedTab(tab, btn) {
-  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
-  btn.classList.add('active'); loadFeed(tab);
+  loadFeed(tab);
 }
 function refreshFeed() { loadFeed(feedTab); }
 
@@ -693,6 +750,9 @@ async function toggleLike(videoId, el) {
     likedVideos[videoId] = { videoId, title:v?.title||'', thumb:v?.thumb||'', channel:v?.channel||'' };
     el.classList.add('liked'); el.querySelector('.r-act-ico').innerHTML = heartSvg(true);
     sb.upsert('likes', { user_id:ME.id, video_id:videoId, title:v?.title||'', thumb:v?.thumb||'', channel:v?.channel||'' }, 'user_id,video_id').catch(()=>{});
+    // Learn interest from liked video
+    extractKeywords(v?.title).forEach(addInterest);
+    if (v?.channel) addInterest(v.channel.toLowerCase());
   }
   localStorage.setItem('isx_likes_'+ME.id, JSON.stringify(likedVideos));
 }
@@ -767,7 +827,7 @@ async function loadFriends() {
   ]);
   const ids = [...asA.map(r=>r.user_b), ...asB.map(r=>r.user_a)].filter(Boolean);
   if (!ids.length) { friends=[]; return; }
-  friends = await sb.get('profiles', `?id=in.(${ids.join(',')})&select=id,name,username,color`);
+  friends = await sb.get('profiles', `?id=in.(${ids.join(',')})&select=id,name,username,color,avatar_url`);
 }
 
 async function loadFriendRequests() {
@@ -787,7 +847,7 @@ function updateReqBadge() {
 async function searchUsers(q) {
   const res = document.getElementById('search-results');
   if (!q||q.length<2) { res.classList.remove('show'); return; }
-  const rows = await sb.get('profiles', `?username=ilike.*${encodeURIComponent(q)}*&select=id,name,username,color&limit=8`);
+  const rows = await sb.get('profiles', `?username=ilike.*${encodeURIComponent(q)}*&select=id,name,username,color,avatar_url&limit=8`);
   const filtered = rows.filter(r=>r.id!==ME.id);
   if (!filtered.length) {
     res.innerHTML=`<div style="padding:14px;font-size:13px;color:var(--muted)">Sin resultados para "${escHtml(q)}"</div>`;
@@ -850,7 +910,7 @@ async function renderAmigos() {
       const fLikes = await sb.get('likes', `?user_id=eq.${f.id}&select=video_id,title,thumb,channel&order=created_at.desc&limit=8`);
       html += `<div class="amigo-card">
         <div class="amigo-hdr">
-          <div class="amigo-av" style="background:${f.color}33;color:${f.color}">${(f.name||'?')[0].toUpperCase()}</div>
+          ${f.avatar_url ? `<img src="${escHtml(f.avatar_url)}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;flex-shrink:0">` : `<div class="amigo-av" style="background:${f.color}33;color:${f.color}">${(f.name||'?')[0].toUpperCase()}</div>`}
           <div><div class="amigo-name">${escHtml(f.name)}</div><div class="amigo-user">@${escHtml(f.username)}</div></div>
           <button style="margin-left:auto;background:var(--s2);border:1px solid var(--border);border-radius:20px;padding:7px 14px;font-size:13px;color:var(--text);cursor:pointer;font-family:'Outfit',sans-serif" onclick="openChat('${f.id}')">💬 Mensaje</button>
         </div>
@@ -910,7 +970,7 @@ async function renderInbox() {
     }
     const isUnread = last && last.from_id!==ME.id && unreadConvs.has(f.id);
     return `<div class="conv-item ${isUnread?'unread':''}" onclick="openChat('${f.id}')">
-      <div class="conv-av" style="background:${f.color}33;color:${f.color};border-color:${f.color}55">${(f.name||'?')[0].toUpperCase()}</div>
+      ${f.avatar_url ? `<img src="${escHtml(f.avatar_url)}" style="width:46px;height:46px;border-radius:50%;object-fit:cover;flex-shrink:0;border:1.5px solid ${f.color}55">` : `<div class="conv-av" style="background:${f.color}33;color:${f.color};border-color:${f.color}55">${(f.name||'?')[0].toUpperCase()}</div>`}
       <div class="conv-body">
         <div class="conv-name">${escHtml(f.name)}</div>
         <div class="conv-preview">${icon}${escHtml(preview)}</div>
@@ -929,8 +989,13 @@ async function openChat(friendId) {
   if (!f) { toast('No se encontró el contacto'); return; }
   currentChatFriend=f; unreadConvs.delete(friendId); updateMsgBadge();
   const av=document.getElementById('chat-hdr-av');
-  av.textContent=(f.name||'?')[0].toUpperCase();
-  av.style.background=f.color+'33'; av.style.color=f.color;
+  if (f.avatar_url) {
+    av.innerHTML=`<img src="${f.avatar_url}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
+    av.style.background=''; av.style.color='';
+  } else {
+    av.innerHTML=''; av.textContent=(f.name||'?')[0].toUpperCase();
+    av.style.background=f.color+'33'; av.style.color=f.color;
+  }
   document.getElementById('chat-hdr-name').textContent=f.name;
   document.getElementById('chat-hdr-status').textContent='● activo';
   if (currentScreen!=='chat') prevScreen=currentScreen;
@@ -1033,8 +1098,17 @@ async function confirmSendImg(viewOnce) {
 }
 
 // Abrir imagen al tocarla (y marcar view-once como vista)
+// Track view-once images already opened this session
+const _openedOnce = new Set();
+
 async function openChatImage(msgId, url, isOnce) {
   if (isOnce) {
+    // If already opened this session, block it
+    if (_openedOnce.has(msgId)) {
+      toast('Esta imagen ya fue vista y no puede verse de nuevo');
+      return;
+    }
+    _openedOnce.add(msgId);
     await sb.patch('messages', `?id=eq.${msgId}`, { type: 'image_seen' }).catch(() => {});
   }
 
@@ -1426,7 +1500,7 @@ function buildMsgBubble(m, prev) {
     }).join('')}</div>`;
   }
   return `<div class="bubble-row ${side}" data-msg-id="${m.id}">
-    ${!isMe?`<div class="bubble-av" style="background:${f.color}33;color:${f.color}">${(f.name||'?')[0].toUpperCase()}</div>`:''}
+    ${!isMe?(f.avatar_url?`<img src="${escHtml(f.avatar_url)}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0;align-self:flex-end">`:`<div class="bubble-av" style="background:${f.color}33;color:${f.color}">${(f.name||'?')[0].toUpperCase()}</div>`):''}
     <div class="bubble-col">
       ${showName?`<div class="bubble-name">${escHtml(f.name)}</div>`:''}
       <div class="msg-swipe-wrap"
@@ -1562,6 +1636,214 @@ function openMsgMenu(mid, txt, replyOnly=false) {
 // ══════════════════════════════════════════════════════════
 //  PERFIL
 // ══════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════
+//  BUSCAR — grid de descubrimiento
+// ══════════════════════════════════════════════════════════
+
+const BUSCAR_TOPICS = [
+  'parejas humor shorts', 'gym workout tips shorts', 'futbol goles shorts',
+  'memes argentina shorts', 'musica viral shorts', 'recetas cocina shorts',
+  'tecnologia tips shorts', 'viajes aventura shorts', 'baile challenge shorts',
+  'motivacion frases shorts', 'animales graciosos shorts', 'deporte extremo shorts',
+];
+
+let _buscarQuery = '';
+let _buscarVideos = [];
+let _buscarLoading = false;
+
+async function onBuscarInput(val) {
+  _buscarQuery = val.trim();
+  document.getElementById('buscar-clear').style.display = val ? 'block' : 'none';
+  clearTimeout(onBuscarInput._t);
+  onBuscarInput._t = setTimeout(() => loadBuscarGrid(), 500);
+}
+
+function clearBuscar() {
+  document.getElementById('buscar-inp').value = '';
+  _buscarQuery = '';
+  document.getElementById('buscar-clear').style.display = 'none';
+  loadBuscarGrid();
+}
+
+async function loadBuscarGrid() {
+  if (_buscarLoading) return;
+  _buscarLoading = true;
+  const grid = document.getElementById('buscar-grid');
+  grid.innerHTML = '<div style="padding:40px;text-align:center"><div class="spinner" style="margin:0 auto"></div></div>';
+
+  try {
+    // Build queries: custom search or personalized topics
+    let queries;
+    if (_buscarQuery) {
+      queries = [_buscarQuery + ' shorts'];
+    } else {
+      // Mix: user interests + random topics
+      const interests = getUserInterests().slice(0,4).map(k => k + ' shorts');
+      const shuffle = [...BUSCAR_TOPICS].sort(() => Math.random() - 0.5).slice(0,8);
+      queries = [...interests, ...shuffle].slice(0,10);
+    }
+
+    // Fetch one video per query in parallel
+    const results = await Promise.all(queries.map(q => _buscarFetchOne(q)));
+    _buscarVideos = results.filter(Boolean);
+
+    if (!_buscarVideos.length) {
+      grid.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted)">Sin resultados</div>';
+      return;
+    }
+
+    _renderBuscarGrid(_buscarVideos);
+  } catch(e) {
+    console.error('buscar', e);
+    grid.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted)">Error al cargar</div>';
+  }
+  _buscarLoading = false;
+}
+
+async function _buscarFetchOne(query) {
+  try {
+    const key = getYTKey();
+    const p = new URLSearchParams({ part:'snippet', q:query, type:'video',
+      videoDuration:'short', videoEmbeddable:'true', maxResults:5,
+      regionCode:'AR', relevanceLanguage:'es', key });
+    const r = await fetch(`https://www.googleapis.com/youtube/v3/search?${p}`);
+    if (!r.ok) return null;
+    const data = await r.json();
+    const items = (data.items||[]).filter(i => !seenVideoIds.has(i.id?.videoId));
+    if (!items.length) return null;
+    const item = items[0];
+    const id = item.id?.videoId;
+    if (!id) return null;
+    return {
+      id,
+      title: item.snippet.title,
+      channel: item.snippet.channelTitle,
+      thumb: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.medium?.url || '',
+      query, // keep query for opening related feed
+    };
+  } catch { return null; }
+}
+
+function _renderBuscarGrid(videos) {
+  const grid = document.getElementById('buscar-grid');
+  const cols = 2;
+  grid.innerHTML = `<div style="display:grid;grid-template-columns:repeat(${cols},1fr);gap:6px;padding:4px">
+    ${videos.map((v,i) => `
+      <div onclick="openBuscarVideo(${i})" style="
+        position:relative;aspect-ratio:9/16;border-radius:12px;overflow:hidden;
+        background:var(--s2);cursor:pointer;
+      ">
+        <img src="${escHtml(v.thumb)}" alt="" style="width:100%;height:100%;object-fit:cover" loading="lazy">
+        <div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.8) 0%,transparent 50%)"></div>
+        <div style="position:absolute;bottom:0;left:0;right:0;padding:8px">
+          <div style="font-size:11px;font-weight:600;color:#fff;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${escHtml(v.title)}</div>
+          <div style="font-size:10px;color:rgba(255,255,255,.6);margin-top:2px">${escHtml(v.channel)}</div>
+        </div>
+      </div>
+    `).join('')}
+  </div>`;
+}
+
+async function openBuscarVideo(idx) {
+  const v = _buscarVideos[idx];
+  if (!v) return;
+
+  // Show fullscreen overlay with this video + related
+  const overlay = document.getElementById('buscar-overlay');
+  overlay.style.display = 'flex';
+  document.getElementById('buscar-overlay-title').textContent = v.query?.replace(' shorts','') || v.title;
+  document.getElementById('buscar-feed').innerHTML =
+    '<div class="reel"><div class="reel-loader"><div class="spinner"></div><p>Cargando...</p></div></div>';
+
+  // Load feed for this query
+  const feed = document.getElementById('buscar-feed');
+  feed.innerHTML = '';
+  const seenBuscar = new Set();
+
+  try {
+    const key = getYTKey();
+    const p = new URLSearchParams({ part:'snippet', q: v.query || v.title + ' shorts',
+      type:'video', videoDuration:'short', videoEmbeddable:'true',
+      maxResults:15, regionCode:'AR', relevanceLanguage:'es', key });
+    const r = await fetch(`https://www.googleapis.com/youtube/v3/search?${p}`);
+    const data = await r.json();
+    const ids = (data.items||[]).map(i=>i.id?.videoId).filter(Boolean).filter(id=>!seenBuscar.has(id));
+    if (!ids.length) { feed.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted)">Sin videos</div>'; return; }
+
+    const det = await ytDetails(ids);
+    const videos = det.filter(x => parseDur(x.contentDetails?.duration) <= 180).map(x => {
+      seenBuscar.add(x.id);
+      return {
+        id: x.id, title: x.snippet.title, channel: x.snippet.channelTitle,
+        thumb: x.snippet.thumbnails?.high?.url || '',
+        views: parseInt(x.statistics?.viewCount||0),
+        source: 'youtube',
+      };
+    });
+
+    feed.innerHTML = '';
+    // Reuse buildReelEl for the buscar feed
+    videos.forEach(vid => {
+      const el = buildReelEl(vid);
+      el.style.height = '100%';
+      el.style.scrollSnapAlign = 'start';
+      feed.appendChild(el);
+    });
+    // Scroll to selected video first
+    feed.scrollTop = 0;
+  } catch(e) { console.error('buscar open', e); }
+}
+
+function closeBuscarOverlay() {
+  const overlay = document.getElementById('buscar-overlay');
+  overlay.style.display = 'none';
+  document.getElementById('buscar-feed').innerHTML = '';
+}
+
+// ══════════════════════════════════════════════════════════
+//  FOTO DE PERFIL
+// ══════════════════════════════════════════════════════════
+
+async function uploadProfilePhoto(file) {
+  if (!file || !ME) return;
+  if (file.size > 5 * 1024 * 1024) { toast('Imagen muy grande (máx 5MB)'); return; }
+  toast('Subiendo foto...');
+  try {
+    const ext = file.name.split('.').pop() || 'jpg';
+    const path = `avatars/${ME.id}.${ext}`;
+    const res = await fetch(
+      `${CFG.SUPABASE_URL}/storage/v1/object/chat-media/${path}`,
+      { method:'POST', headers:{ 'apikey':CFG.SUPABASE_KEY, 'Authorization':`Bearer ${CFG.SUPABASE_KEY}`, 'Content-Type':file.type, 'x-upsert':'true' }, body:file }
+    );
+    if (!res.ok) throw new Error('Upload failed');
+    const avatarUrl = `${CFG.SUPABASE_URL}/storage/v1/object/public/chat-media/${path}?t=${Date.now()}`;
+    await sb.patch('profiles', `?id=eq.${ME.id}`, { avatar_url: avatarUrl });
+    ME.avatar_url = avatarUrl;
+    localStorage.setItem('isx_session', JSON.stringify(ME));
+    toast('✓ Foto actualizada');
+    renderPerfil();
+    // Update chat header if open
+    _updateAvatarInUI();
+  } catch(e) { console.error('avatar upload', e); toast('Error al subir la foto'); }
+}
+
+function _updateAvatarInUI() {
+  // Update chat header avatar
+  const av = document.getElementById('chat-hdr-av');
+  if (av && ME.avatar_url) {
+    av.innerHTML = `<img src="${ME.avatar_url}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
+  }
+}
+
+// Helper to render any user avatar (with photo or initials)
+function renderAvatar(user, size=38) {
+  if (user?.avatar_url) {
+    return `<img src="${escHtml(user.avatar_url)}" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;flex-shrink:0;border:1.5px solid ${user.color||'#ff2d55'}55">`;
+  }
+  return `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${user?.color||'#ff2d55'}33;color:${user?.color||'#ff2d55'};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:${Math.round(size*0.45)}px;flex-shrink:0">${(user?.name||'?')[0].toUpperCase()}</div>`;
+}
+
 // ══════════════════════════════════════════════════════════
 //  TEMAS DE COLOR
 // ══════════════════════════════════════════════════════════
@@ -1614,10 +1896,22 @@ function renderPerfil() {
     </button>`;
   }).join('');
 
+  const avatarHtml = ME.avatar_url
+    ? `<img src="${escHtml(ME.avatar_url)}" style="width:70px;height:70px;border-radius:50%;object-fit:cover;border:2px solid ${ME.color||'#ff2d55'}55">`
+    : `<div class="perfil-av-big" style="background:${ME.color||'#ff2d55'}33;color:${ME.color||'#ff2d55'}">${(ME.name||'U')[0].toUpperCase()}</div>`;
+
   c.innerHTML = `
     <div class="perfil-hdr">
-      <div class="perfil-av-big" style="background:${ME.color||'#ff2d55'}33;color:${ME.color||'#ff2d55'}">${(ME.name||'U')[0].toUpperCase()}</div>
-      <div><div class="perfil-name">${escHtml(ME.name)}</div><div class="perfil-username">@${escHtml(ME.username)}</div></div>
+      <div style="position:relative;cursor:pointer" onclick="document.getElementById('avatar-input').click()">
+        ${avatarHtml}
+        <div style="position:absolute;bottom:0;right:0;width:22px;height:22px;border-radius:50%;background:var(--acc);display:flex;align-items:center;justify-content:center;font-size:12px;border:2px solid var(--bg)">📷</div>
+      </div>
+      <input type="file" id="avatar-input" accept="image/*" style="display:none" onchange="uploadProfilePhoto(this.files[0]);this.value=''">
+      <div>
+        <div class="perfil-name">${escHtml(ME.name)}</div>
+        <div class="perfil-username">@${escHtml(ME.username)}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">Tocá la foto para cambiarla</div>
+      </div>
     </div>
     <div class="perfil-stats">
       <div class="pstat"><div class="pstat-n">${Object.keys(likedVideos).length}</div><div class="pstat-l">Likes</div></div>
