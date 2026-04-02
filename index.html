@@ -518,6 +518,21 @@ a{color:inherit;text-decoration:none}
 
 .tab-search-wrap { margin-left: auto; }
 .tab-search-btn { padding: 8px 12px !important; font-size: 16px; }
+
+/* Disable native context menu on images in chat */
+.bub-img img, .bub-img, .bubble-col img {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  pointer-events: none;
+}
+.bub-img { pointer-events: auto; }
+
+/* Buscar grid & overlay */
+#buscar-grid::-webkit-scrollbar { display: none; }
+#buscar-feed { scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+#buscar-feed .reel { height: calc(100vh - 50px) !important; scroll-snap-align: start; scroll-snap-stop: always; }
+
 </style>
 </head>
 <body>
@@ -564,20 +579,24 @@ a{color:inherit;text-decoration:none}
     </div>
   </div>
   <div class="tabs">
-    <button class="tab active" onclick="switchFeedTab('parati',this)">Para vos</button>
-    <button class="tab" onclick="switchFeedTab('trending',this)">Trending 🔥</button>
-    <div class="tab-search-wrap">
-      <button class="tab tab-search-btn" id="search-tab-btn" onclick="toggleFeedSearch()">🔍</button>
-    </div>
+    <button class="tab active" id="tab-feed" onclick="showFeedView()">Feed</button>
+    <button class="tab" id="tab-buscar" onclick="showBuscarView()">Buscar</button>
   </div>
-  <div id="feed-search-bar" style="display:none;padding:6px 12px;border-bottom:1px solid var(--border);flex-shrink:0">
-    <div style="display:flex;align-items:center;gap:8px;background:var(--s2);border-radius:22px;padding:8px 14px;border:1px solid var(--border)">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      <input id="feed-search-inp" style="flex:1;background:none;border:none;color:var(--text);font-size:14px;font-family:'Outfit',sans-serif;outline:none" placeholder="Buscar reels... (ej: Lali, memes, gym)" oninput="searchReels(this.value)" autocapitalize="none">
-      <button id="reel-search-clear" onclick="clearFeedSearch()" style="display:none;background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:0">✕</button>
-    </div>
+  <!-- Feed view -->
+  <div id="view-feed" style="flex:1;display:flex;flex-direction:column;overflow:hidden">
+    <div class="feed" id="feed"></div>
   </div>
-  <div class="feed" id="feed"></div>
+  <!-- Buscar view -->
+  <div id="view-buscar" style="flex:1;display:none;flex-direction:column;overflow:hidden">
+    <div style="padding:10px 12px;border-bottom:1px solid var(--border);flex-shrink:0">
+      <div style="display:flex;align-items:center;gap:8px;background:var(--s2);border-radius:22px;padding:9px 16px;border:1px solid var(--border)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input id="buscar-inp" style="flex:1;background:none;border:none;color:var(--text);font-size:14px;font-family:'Outfit',sans-serif;outline:none" placeholder="Buscar: Shakira, gym, memes..." oninput="onBuscarInput(this.value)" autocapitalize="none">
+        <button id="buscar-clear" onclick="clearBuscar()" style="display:none;background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;padding:0">✕</button>
+      </div>
+    </div>
+    <div id="buscar-grid" style="flex:1;overflow-y:auto;padding:8px 8px 80px"></div>
+  </div>
 </div>
 
 <!-- ════════════ INBOX ════════════ -->
@@ -795,5 +814,15 @@ a{color:inherit;text-decoration:none}
   <span>Grabando... soltá para terminar</span>
   <span id="rec-timer">0:00</span>
 </div>
+
+<!-- Buscar reel fullscreen -->
+<div id="buscar-overlay" style="display:none;position:fixed;inset:0;z-index:500;background:#000;flex-direction:column">
+  <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;flex-shrink:0;background:#000">
+    <button onclick="closeBuscarOverlay()" style="background:none;border:none;color:#fff;font-size:22px;cursor:pointer;padding:4px">←</button>
+    <span id="buscar-overlay-title" style="font-size:15px;font-weight:600;color:#fff;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+  </div>
+  <div id="buscar-feed" style="flex:1;overflow-y:scroll;scroll-snap-type:y mandatory;scrollbar-width:none"></div>
+</div>
+
 </body>
 </html>
