@@ -534,7 +534,7 @@ a{color:inherit;text-decoration:none}
 #buscar-feed .reel { height: calc(100vh - 50px) !important; scroll-snap-align: start; scroll-snap-stop: always; }
 
 
-#sticker-panel.show { transform: translateY(0); }
+#sticker-panel.show { transform: translateY(0) !important; pointer-events: all !important; }
 #sticker-grid::-webkit-scrollbar { display: none; }
 .stk-item {
   aspect-ratio:1;border-radius:10px;background:var(--s2);border:none;cursor:pointer;
@@ -665,6 +665,18 @@ a{color:inherit;text-decoration:none}
   </div>
 
 
+  <!-- Sticker panel — inside chat so it's always on top -->
+  <div id="sticker-panel" style="
+    position:absolute;bottom:0;left:0;right:0;z-index:500;
+    background:var(--s1);border-top:1px solid var(--border);
+    border-radius:20px 20px 0 0;padding:12px 8px 20px;
+    transform:translateY(100%);transition:transform .28s cubic-bezier(.34,1.2,.64,1);
+    pointer-events:none;
+  ">
+    <div style="width:36px;height:3px;background:var(--s4);border-radius:2px;margin:0 auto 10px"></div>
+    <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;padding:0 8px;margin-bottom:8px">Stickers</div>
+    <div id="sticker-grid" style="display:grid;grid-template-columns:repeat(6,1fr);gap:6px;max-height:200px;overflow-y:auto;padding:0 4px"></div>
+  </div>
 </div>
 
 <!-- ════════════ AMIGOS ════════════ -->
@@ -837,21 +849,7 @@ a{color:inherit;text-decoration:none}
 </div>
 
 
-<!-- ════════════ STICKER PANEL ════════════ -->
-<div id="sticker-panel" style="
-  position:fixed;bottom:0;left:0;right:0;z-index:300;
-  background:var(--s1);border-top:1px solid var(--border);
-  border-radius:20px 20px 0 0;padding:12px 8px 24px;
-  transform:translateY(100%);transition:transform .3s cubic-bezier(.34,1.3,.64,1);
-  display:block;
-">
-  <div style="width:36px;height:3px;background:var(--s4);border-radius:2px;margin:0 auto 12px"></div>
-  <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;padding:0 8px;margin-bottom:10px">Stickers</div>
-  <div id="sticker-grid" style="
-    display:grid;grid-template-columns:repeat(6,1fr);gap:4px;
-    max-height:220px;overflow-y:auto;padding:0 4px;
-  "></div>
-</div>
+
 
 </body>
 </html>
