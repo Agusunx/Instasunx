@@ -251,6 +251,17 @@ function hideSplash() {
 }
 
 window.addEventListener('DOMContentLoaded', async () => {
+  // Populate sticker grid
+  const sgrid = document.getElementById('sticker-grid');
+  if (sgrid && typeof STICKERS !== 'undefined') {
+    sgrid.innerHTML = STICKERS.map(s =>
+      `<button class="stk-item" onpointerdown="event.preventDefault()" onclick="sendSticker('${s.id}')">
+        <span class="stk-emoji">${s.e}</span>
+        <span class="stk-label">${s.l}</span>
+      </button>`
+    ).join('');
+  }
+
   const session = JSON.parse(localStorage.getItem('isx_session') || 'null');
   if (session?.id) {
     try {
@@ -730,7 +741,7 @@ function showBuscarView() {
   document.getElementById('view-buscar').style.display = 'flex';
   document.getElementById('tab-buscar').classList.add('active');
   document.getElementById('tab-feed').classList.remove('active');
-  loadBuscarGrid();
+  loadBuscarGrid(true);
 }
 
 // Legacy — keep parati working
@@ -1199,8 +1210,26 @@ function closeImgOverlay() {
 
 // Interceptar botón atrás del celular
 window.addEventListener('popstate', e => {
-  const overlay = document.getElementById('img-overlay');
-  if (overlay) { overlay.remove(); if (window._imgOverlayOnce && currentChatFriend) loadChatMessages(currentChatFriend.id, false); window._imgOverlayOnce = false; }
+  // Image overlay
+  const imgOverlay = document.getElementById('img-overlay');
+  if (imgOverlay) {
+    imgOverlay.remove();
+    if (window._imgOverlayOnce && currentChatFriend) loadChatMessages(currentChatFriend.id, false);
+    window._imgOverlayOnce = false;
+    return;
+  }
+  // Buscar overlay
+  const buscarOverlay = document.getElementById('buscar-overlay');
+  if (buscarOverlay && buscarOverlay.style.display !== 'none') {
+    buscarOverlay.style.display = 'none';
+    document.getElementById('buscar-feed').innerHTML = '';
+    return;
+  }
+  // Default: go back one screen in the app
+  if (currentScreen !== 'main' && currentScreen !== 'auth') {
+    history.pushState(null, ''); // prevent leaving app
+    goBack();
+  }
 });
 
 // ══════════════════════════════════════════════════════════
@@ -1420,6 +1449,8 @@ function buildMsgBubble(m, prev) {
     content = `<div style="text-align:center;padding:8px 0;font-size:13px;color:var(--muted)">
       📳 ${nudgeIsMe ? 'Enviaste un zumbido' : escHtml(f.name) + ' te mandó un zumbido'}
     </div>`;
+  } else if (m.type==='sticker') {
+    content = `<div style="font-size:64px;line-height:1;padding:4px 0;user-select:none" title="${escHtml(m.reel_title||'')}">${escHtml(m.content||'')}</div>`;
   } else if (m.type==='image' || m.type==='image_once' || m.type==='image_seen') {
     const isOnce = m.type === 'image_once';
     const isSeen = m.type === 'image_seen';
@@ -1638,25 +1669,42 @@ function openMsgMenu(mid, txt, replyOnly=false) {
 // ══════════════════════════════════════════════════════════
 
 // ══════════════════════════════════════════════════════════
-//  BUSCAR — grid de descubrimiento
+//  BUSCAR — grid de descubrimiento infinito
 // ══════════════════════════════════════════════════════════
 
-const BUSCAR_TOPICS = [
-  'parejas humor shorts', 'gym workout tips shorts', 'futbol goles shorts',
-  'memes argentina shorts', 'musica viral shorts', 'recetas cocina shorts',
-  'tecnologia tips shorts', 'viajes aventura shorts', 'baile challenge shorts',
-  'motivacion frases shorts', 'animales graciosos shorts', 'deporte extremo shorts',
+// Pool amplio de etiquetas/temas variados
+const BUSCAR_POOL = [
+  'humor parejas', 'migajeros meme', 'red flags pareja', 'novios chistosos',
+  'gym workout', 'ejercicio motivacion', 'rutina fitness', 'crossfit shorts',
+  'memes argentina', 'viral tiktok argentina', 'humor rioplatense', 'cringe viral',
+  'cocina rapida', 'recetas faciles', 'comida viral', 'foodie shorts',
+  'baile challenge', 'coreografia viral', 'dance shorts', 'perreo viral',
+  'futbol goles', 'highlights futbol', 'neymar skills', 'messi moments',
+  'tecnologia gadgets', 'iphone tips', 'android trucos', 'tech review shorts',
+  'viajes aventura', 'lugares increibles', 'travel viral', 'paisajes hermosos',
+  'animales graciosos', 'perros chistosos', 'gatos virales', 'mascotas tiernas',
+  'musica viral', 'covers increibles', 'cantantes virales', 'hits 2025',
+  'motivacion frases', 'reflexion vida', 'consejos autoayuda', 'mindset exitoso',
+  'deporte extremo', 'adrenalina deportes', 'skate tricks', 'bmx shorts',
+  'maquillaje tutorial', 'beauty tips', 'transformacion makeup', 'skincare rutina',
+  'chistes humor negro', 'standout comedy', 'fails compilation', 'prank viral',
+  'lali esposito', 'bizarrap music sessions', 'tini stoessel', 'bad bunny shorts',
+  'boxeo highlights', 'ufc knockouts', 'wrestling viral', 'deporte combate',
+  'fotos transformacion', 'glow up viral', 'antes despues viral', 'cambio extremo',
 ];
 
 let _buscarQuery = '';
 let _buscarVideos = [];
 let _buscarLoading = false;
+let _buscarPageToken = '';
+let _buscarDone = false;
+let _buscarSeenIds = new Set();
 
 async function onBuscarInput(val) {
   _buscarQuery = val.trim();
   document.getElementById('buscar-clear').style.display = val ? 'block' : 'none';
   clearTimeout(onBuscarInput._t);
-  onBuscarInput._t = setTimeout(() => loadBuscarGrid(), 500);
+  onBuscarInput._t = setTimeout(() => loadBuscarGrid(true), 500);
 }
 
 function clearBuscar() {
@@ -1666,139 +1714,177 @@ function clearBuscar() {
   loadBuscarGrid();
 }
 
-async function loadBuscarGrid() {
+// Build an ordered queue of queries: interests first, then shuffled pool
+function _buildBuscarQueue() {
+  const interests = getUserInterests().slice(0,8);
+  const shuffled = [...BUSCAR_POOL].sort(() => Math.random() - 0.5);
+  // Interleave interests with pool so we get variety
+  const mixed = [];
+  let pi = 0;
+  for (let i = 0; i < Math.max(interests.length * 2, shuffled.length); i++) {
+    if (i % 3 === 0 && interests[Math.floor(i/3)]) mixed.push(interests[Math.floor(i/3)] + ' shorts');
+    else if (pi < shuffled.length) mixed.push(shuffled[pi++] + ' shorts');
+  }
+  while (pi < shuffled.length) mixed.push(shuffled[pi++] + ' shorts');
+  return mixed;
+}
+
+let _buscarQueue = [];
+let _buscarQueueIdx = 0;
+
+async function loadBuscarGrid(reset=false) {
   if (_buscarLoading) return;
+  if (reset) {
+    _buscarVideos = []; _buscarSeenIds = new Set();
+    _buscarDone = false; _buscarQueue = [];  _buscarQueueIdx = 0;
+    const grid = document.getElementById('buscar-grid');
+    if (grid) grid.innerHTML = '';
+  }
+  if (_buscarDone) return;
   _buscarLoading = true;
+
   const grid = document.getElementById('buscar-grid');
-  grid.innerHTML = '<div style="padding:40px;text-align:center"><div class="spinner" style="margin:0 auto"></div></div>';
+  if (!grid) { _buscarLoading = false; return; }
+
+  // Show loader at bottom (or full screen if empty)
+  let loader = document.getElementById('buscar-loader');
+  if (!loader) {
+    loader = document.createElement('div');
+    loader.id = 'buscar-loader';
+    loader.style.cssText = 'padding:20px;text-align:center;grid-column:1/-1';
+    loader.innerHTML = '<div class="spinner" style="margin:0 auto;width:24px;height:24px"></div>';
+    grid.querySelector('.buscar-inner')?.appendChild(loader) || grid.appendChild(loader);
+  }
 
   try {
-    // Build queries: custom search or personalized topics
-    let queries;
-    if (_buscarQuery) {
-      queries = [_buscarQuery + ' shorts'];
-    } else {
-      // Mix: user interests + random topics
-      const interests = getUserInterests().slice(0,4).map(k => k + ' shorts');
-      const shuffle = [...BUSCAR_TOPICS].sort(() => Math.random() - 0.5).slice(0,8);
-      queries = [...interests, ...shuffle].slice(0,10);
+    // Build queries if not built yet
+    if (!_buscarQueue.length) {
+      _buscarQueue = _buscarQuery ? [_buscarQuery + ' shorts'] : _buildBuscarQueue();
     }
 
-    // Fetch one video per query in parallel
-    const results = await Promise.all(queries.map(q => _buscarFetchOne(q)));
-    _buscarVideos = results.filter(Boolean);
-
-    if (!_buscarVideos.length) {
-      grid.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted)">Sin resultados</div>';
-      return;
+    // Fetch a batch of ~10 videos
+    const batchSize = 10;
+    const newVideos = [];
+    while (newVideos.length < batchSize && _buscarQueueIdx < _buscarQueue.length) {
+      const q = _buscarQueue[_buscarQueueIdx++];
+      const vids = await _buscarFetchBatch(q, 3);
+      newVideos.push(...vids);
+      if (newVideos.length >= batchSize) break;
     }
 
-    _renderBuscarGrid(_buscarVideos);
-  } catch(e) {
-    console.error('buscar', e);
-    grid.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted)">Error al cargar</div>';
-  }
+    if (!newVideos.length) { _buscarDone = true; loader.remove(); _buscarLoading = false; return; }
+
+    const startIdx = _buscarVideos.length;
+    _buscarVideos.push(...newVideos);
+
+    // Ensure grid container exists
+    let inner = grid.querySelector('.buscar-inner');
+    if (!inner) {
+      inner = document.createElement('div');
+      inner.className = 'buscar-inner';
+      inner.style.cssText = 'display:grid;grid-template-columns:repeat(2,1fr);gap:6px;padding:4px';
+      grid.innerHTML = '';
+      grid.appendChild(inner);
+    }
+
+    loader.remove();
+
+    // Append new cards
+    newVideos.forEach((v, i) => {
+      const idx = startIdx + i;
+      const card = document.createElement('div');
+      card.style.cssText = 'position:relative;aspect-ratio:9/16;border-radius:12px;overflow:hidden;background:var(--s2);cursor:pointer';
+      card.innerHTML = `
+        <img src="${escHtml(v.thumb)}" alt="" style="width:100%;height:100%;object-fit:cover" loading="lazy">
+        <div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.8) 0%,transparent 55%)"></div>
+        <div style="position:absolute;bottom:0;left:0;right:0;padding:8px">
+          <div style="font-size:11px;font-weight:600;color:#fff;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${escHtml(v.title)}</div>
+          <div style="font-size:10px;color:rgba(255,255,255,.55);margin-top:2px">${escHtml(v.channel)}</div>
+        </div>`;
+      card.addEventListener('click', () => openBuscarVideo(idx));
+      inner.appendChild(card);
+    });
+
+    // Sentinel for infinite scroll
+    const sentinel = document.createElement('div');
+    sentinel.id = 'buscar-sentinel';
+    sentinel.style.height = '1px';
+    inner.appendChild(sentinel);
+    new IntersectionObserver(([e]) => { if(e.isIntersecting) loadBuscarGrid(); }, {root:grid,threshold:0.1}).observe(sentinel);
+
+  } catch(e) { console.error('buscar', e); }
   _buscarLoading = false;
 }
 
-async function _buscarFetchOne(query) {
+async function _buscarFetchBatch(query, count=3) {
   try {
     const key = getYTKey();
     const p = new URLSearchParams({ part:'snippet', q:query, type:'video',
-      videoDuration:'short', videoEmbeddable:'true', maxResults:5,
+      videoDuration:'short', videoEmbeddable:'true', maxResults: count + 2,
       regionCode:'AR', relevanceLanguage:'es', key });
     const r = await fetch(`https://www.googleapis.com/youtube/v3/search?${p}`);
-    if (!r.ok) return null;
+    if (!r.ok) { if(r.status===403) rotateYTKey(); return []; }
     const data = await r.json();
-    const items = (data.items||[]).filter(i => !seenVideoIds.has(i.id?.videoId));
-    if (!items.length) return null;
-    const item = items[0];
-    const id = item.id?.videoId;
-    if (!id) return null;
-    return {
-      id,
-      title: item.snippet.title,
-      channel: item.snippet.channelTitle,
-      thumb: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.medium?.url || '',
-      query, // keep query for opening related feed
-    };
-  } catch { return null; }
-}
-
-function _renderBuscarGrid(videos) {
-  const grid = document.getElementById('buscar-grid');
-  const cols = 2;
-  grid.innerHTML = `<div style="display:grid;grid-template-columns:repeat(${cols},1fr);gap:6px;padding:4px">
-    ${videos.map((v,i) => `
-      <div onclick="openBuscarVideo(${i})" style="
-        position:relative;aspect-ratio:9/16;border-radius:12px;overflow:hidden;
-        background:var(--s2);cursor:pointer;
-      ">
-        <img src="${escHtml(v.thumb)}" alt="" style="width:100%;height:100%;object-fit:cover" loading="lazy">
-        <div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.8) 0%,transparent 50%)"></div>
-        <div style="position:absolute;bottom:0;left:0;right:0;padding:8px">
-          <div style="font-size:11px;font-weight:600;color:#fff;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${escHtml(v.title)}</div>
-          <div style="font-size:10px;color:rgba(255,255,255,.6);margin-top:2px">${escHtml(v.channel)}</div>
-        </div>
-      </div>
-    `).join('')}
-  </div>`;
+    return (data.items||[])
+      .map(i => i.id?.videoId).filter(id => id && !_buscarSeenIds.has(id))
+      .slice(0, count)
+      .map(id => {
+        _buscarSeenIds.add(id);
+        const item = data.items.find(i => i.id?.videoId === id);
+        return {
+          id, query,
+          title: item?.snippet?.title || '',
+          channel: item?.snippet?.channelTitle || '',
+          thumb: item?.snippet?.thumbnails?.high?.url || item?.snippet?.thumbnails?.medium?.url || '',
+        };
+      });
+  } catch { return []; }
 }
 
 async function openBuscarVideo(idx) {
   const v = _buscarVideos[idx];
   if (!v) return;
 
-  // Show fullscreen overlay with this video + related
+  history.pushState({ buscarOverlay: true }, '');
+
   const overlay = document.getElementById('buscar-overlay');
   overlay.style.display = 'flex';
-  document.getElementById('buscar-overlay-title').textContent = v.query?.replace(' shorts','') || v.title;
-  document.getElementById('buscar-feed').innerHTML =
-    '<div class="reel"><div class="reel-loader"><div class="spinner"></div><p>Cargando...</p></div></div>';
+  document.getElementById('buscar-overlay-title').textContent =
+    (v.query||'').replace(/ shorts$/i,'').replace(/\w/g, c=>c.toUpperCase()) || v.title;
 
-  // Load feed for this query
   const feed = document.getElementById('buscar-feed');
-  feed.innerHTML = '';
-  const seenBuscar = new Set();
+  feed.innerHTML = '<div class="reel"><div class="reel-loader"><div class="spinner"></div><p>Cargando...</p></div></div>';
 
   try {
     const key = getYTKey();
-    const p = new URLSearchParams({ part:'snippet', q: v.query || v.title + ' shorts',
-      type:'video', videoDuration:'short', videoEmbeddable:'true',
-      maxResults:15, regionCode:'AR', relevanceLanguage:'es', key });
+    const q = v.query || v.title + ' shorts';
+    const p = new URLSearchParams({ part:'snippet', q, type:'video',
+      videoDuration:'short', videoEmbeddable:'true', maxResults:15,
+      regionCode:'AR', relevanceLanguage:'es', key });
     const r = await fetch(`https://www.googleapis.com/youtube/v3/search?${p}`);
+    if (!r.ok) throw new Error('YT error');
     const data = await r.json();
-    const ids = (data.items||[]).map(i=>i.id?.videoId).filter(Boolean).filter(id=>!seenBuscar.has(id));
-    if (!ids.length) { feed.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted)">Sin videos</div>'; return; }
-
+    const seenB = new Set();
+    const ids = (data.items||[]).map(i=>i.id?.videoId).filter(id=>id&&!seenB.has(id));
+    if (!ids.length) { feed.innerHTML = '<p style="padding:40px;text-align:center;color:var(--muted)">Sin videos</p>'; return; }
     const det = await ytDetails(ids);
-    const videos = det.filter(x => parseDur(x.contentDetails?.duration) <= 180).map(x => {
-      seenBuscar.add(x.id);
-      return {
-        id: x.id, title: x.snippet.title, channel: x.snippet.channelTitle,
-        thumb: x.snippet.thumbnails?.high?.url || '',
-        views: parseInt(x.statistics?.viewCount||0),
-        source: 'youtube',
-      };
+    const videos = det.filter(x=>parseDur(x.contentDetails?.duration)<=180).map(x=>{
+      seenB.add(x.id);
+      return { id:x.id, title:x.snippet.title, channel:x.snippet.channelTitle,
+        thumb:x.snippet.thumbnails?.high?.url||'', views:parseInt(x.statistics?.viewCount||0), source:'youtube' };
     });
-
     feed.innerHTML = '';
-    // Reuse buildReelEl for the buscar feed
-    videos.forEach(vid => {
-      const el = buildReelEl(vid);
-      el.style.height = '100%';
-      el.style.scrollSnapAlign = 'start';
-      feed.appendChild(el);
-    });
-    // Scroll to selected video first
+    videos.forEach(vid => feed.appendChild(buildReelEl(vid)));
     feed.scrollTop = 0;
   } catch(e) { console.error('buscar open', e); }
 }
 
 function closeBuscarOverlay() {
   const overlay = document.getElementById('buscar-overlay');
+  if (!overlay || overlay.style.display === 'none') return;
   overlay.style.display = 'none';
   document.getElementById('buscar-feed').innerHTML = '';
+  if (history.state?.buscarOverlay) history.back();
 }
 
 // ══════════════════════════════════════════════════════════
@@ -1842,6 +1928,68 @@ function renderAvatar(user, size=38) {
     return `<img src="${escHtml(user.avatar_url)}" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;flex-shrink:0;border:1.5px solid ${user.color||'#ff2d55'}55">`;
   }
   return `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${user?.color||'#ff2d55'}33;color:${user?.color||'#ff2d55'};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:${Math.round(size*0.45)}px;flex-shrink:0">${(user?.name||'?')[0].toUpperCase()}</div>`;
+}
+
+
+// ══════════════════════════════════════════════════════════
+//  STICKERS
+// ══════════════════════════════════════════════════════════
+
+const STICKERS = [
+  {id:'s1',e:'😂',l:'jajaja'},{id:'s2',e:'🥹',l:'ay dios'},{id:'s3',e:'💀',l:'me mataste'},
+  {id:'s4',e:'🔥',l:'fuego'},{id:'s5',e:'😭',l:'llorando'},{id:'s6',e:'🤌',l:'perfecto'},
+  {id:'s7',e:'👀',l:'ojooo'},{id:'s8',e:'🫠',l:'derretido'},{id:'s9',e:'🤡',l:'payaso'},
+  {id:'s10',e:'😤',l:'serio'},{id:'s11',e:'🥵',l:'caliente'},{id:'s12',e:'🤣',l:'rotfl'},
+  {id:'s13',e:'😍',l:'enamorado'},{id:'s14',e:'🫶',l:'te quiero'},{id:'s15',e:'💅',l:'please'},
+  {id:'s16',e:'🙄',l:'obvio'},{id:'s17',e:'😌',l:'tranqui'},{id:'s18',e:'🤯',l:'mente rota'},
+  {id:'s19',e:'💔',l:'me rompiste'},{id:'s20',e:'✨',l:'brillante'},{id:'s21',e:'😈',l:'diablito'},
+  {id:'s22',e:'🥳',l:'a festejar'},{id:'s23',e:'🙈',l:'no vi nada'},{id:'s24',e:'🫡',l:'a sus ordenes'},
+];
+
+let _stickerPanelOpen = false;
+
+function toggleStickerPanel() {
+  _stickerPanelOpen = !_stickerPanelOpen;
+  const panel = document.getElementById('sticker-panel');
+  const btn = document.getElementById('sticker-btn');
+  if (_stickerPanelOpen) {
+    panel.classList.add('show');
+    if (btn) btn.style.color = 'var(--acc)';
+    // Close if tap outside
+    setTimeout(() => {
+      document.addEventListener('touchstart', _closeStickerOutside, {once:true, passive:true});
+    }, 100);
+  } else {
+    closeStickerPanel();
+  }
+}
+
+function _closeStickerOutside(e) {
+  const panel = document.getElementById('sticker-panel');
+  const btn = document.getElementById('sticker-btn');
+  if (panel && !panel.contains(e.target) && e.target !== btn) closeStickerPanel();
+}
+
+function closeStickerPanel() {
+  _stickerPanelOpen = false;
+  document.getElementById('sticker-panel')?.classList.remove('show');
+  const btn = document.getElementById('sticker-btn');
+  if (btn) btn.style.color = '';
+}
+
+async function sendSticker(sid) {
+  if (!currentChatFriend || !ME) return;
+  const sticker = STICKERS.find(s => s.id === sid);
+  if (!sticker) return;
+  closeStickerPanel();
+  try {
+    await sb.post('messages', {
+      from_id: ME.id, to_id: currentChatFriend.id,
+      type: 'sticker', content: sticker.e, reel_title: sticker.l,
+    });
+    await loadChatMessages(currentChatFriend.id, true);
+    requestAnimationFrame(() => document.getElementById('chat-inp')?.focus());
+  } catch(e) { console.error('sticker', e); }
 }
 
 // ══════════════════════════════════════════════════════════
