@@ -251,16 +251,6 @@ function hideSplash() {
 }
 
 window.addEventListener('DOMContentLoaded', async () => {
-  // Populate sticker grid
-  const sgrid = document.getElementById('sticker-grid');
-  if (sgrid && typeof STICKERS !== 'undefined') {
-    sgrid.innerHTML = STICKERS.map(s =>
-      `<button class="stk-item" onpointerdown="event.preventDefault()" onclick="sendSticker('${s.id}')">
-        <span class="stk-emoji">${s.e}</span>
-        <span class="stk-label">${s.l}</span>
-      </button>`
-    ).join('');
-  }
 
   const session = JSON.parse(localStorage.getItem('isx_session') || 'null');
   if (session?.id) {
@@ -1953,9 +1943,18 @@ function toggleStickerPanel() {
   const panel = document.getElementById('sticker-panel');
   const btn = document.getElementById('sticker-btn');
   if (_stickerPanelOpen) {
+    // Populate grid here (STICKERS is guaranteed defined at this point)
+    const grid = document.getElementById('sticker-grid');
+    if (grid && !grid.children.length) {
+      grid.innerHTML = STICKERS.map(s =>
+        `<button class="stk-item" onpointerdown="event.preventDefault()" onclick="sendSticker('${s.id}')">
+          <span class="stk-emoji">${s.e}</span>
+          <span class="stk-label">${s.l}</span>
+        </button>`
+      ).join('');
+    }
     panel.classList.add('show');
     if (btn) btn.style.color = 'var(--acc)';
-    // Close if tap outside
     setTimeout(() => {
       document.addEventListener('touchstart', _closeStickerOutside, {once:true, passive:true});
     }, 100);
