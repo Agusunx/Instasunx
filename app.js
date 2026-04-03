@@ -1939,25 +1939,29 @@ const STICKERS = [
 let _stickerPanelOpen = false;
 
 function toggleStickerPanel() {
-  _stickerPanelOpen = !_stickerPanelOpen;
   const panel = document.getElementById('sticker-panel');
-  const btn = document.getElementById('sticker-btn');
+  if (!panel) return;
+
+  _stickerPanelOpen = !_stickerPanelOpen;
+
+  // Always populate grid (safe to call multiple times)
+  const grid = document.getElementById('sticker-grid');
+  if (grid && !grid.children.length) {
+    grid.innerHTML = STICKERS.map(s =>
+      `<button class="stk-item" onpointerdown="event.preventDefault()" onclick="sendSticker('${s.id}')">
+        <span class="stk-emoji">${s.e}</span>
+        <span class="stk-label">${s.l}</span>
+      </button>`
+    ).join('');
+  }
+
   if (_stickerPanelOpen) {
-    // Populate grid here (STICKERS is guaranteed defined at this point)
-    const grid = document.getElementById('sticker-grid');
-    if (grid && !grid.children.length) {
-      grid.innerHTML = STICKERS.map(s =>
-        `<button class="stk-item" onpointerdown="event.preventDefault()" onclick="sendSticker('${s.id}')">
-          <span class="stk-emoji">${s.e}</span>
-          <span class="stk-label">${s.l}</span>
-        </button>`
-      ).join('');
-    }
     panel.classList.add('show');
-    if (btn) btn.style.color = 'var(--acc)';
+    document.getElementById('sticker-btn').style.color = 'var(--acc)';
+    // Tap outside to close
     setTimeout(() => {
-      document.addEventListener('touchstart', _closeStickerOutside, {once:true, passive:true});
-    }, 100);
+      document.addEventListener('touchend', _closeStickerOutside, {once:true, passive:true});
+    }, 200);
   } else {
     closeStickerPanel();
   }
@@ -1965,8 +1969,7 @@ function toggleStickerPanel() {
 
 function _closeStickerOutside(e) {
   const panel = document.getElementById('sticker-panel');
-  const btn = document.getElementById('sticker-btn');
-  if (panel && !panel.contains(e.target) && e.target !== btn) closeStickerPanel();
+  if (panel && !panel.contains(e.target)) closeStickerPanel();
 }
 
 function closeStickerPanel() {
