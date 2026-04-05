@@ -2164,52 +2164,83 @@ function canNotify() {
   return 'Notification' in window && Notification.permission === 'granted';
 }
 
-// Notificar inmediatamente via SW (funciona con app minimizada/cerrada)
+// ── Mostrar notificación en las 3 situaciones ─────────────────────────────
+// APP ABIERTA: usa la burbuja in-app (showPush) — ya se llama desde checkNewMessages
+// APP MINIMIZADA / CERRADA: el SW hace polling independiente y muestra OS notification
+// Esta función cubre el caso de "app abierta en pantalla" como refuerzo
 function showBrowserNotif(title, body, fromId, tag='msg') {
   if (!canNotify()) return;
-  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-    navigator.serviceWorker.controller.postMessage({
-      type: 'SHOW_NOTIF', title, body, tag, fromId
-    });
+  // Intentar via SW (maneja minimizada/cerrada automáticamente)
+  const ctrl = navigator.serviceWorker?.controller;
+  if (ctrl) {
+    ctrl.postMessage({ type: 'SHOW_NOTIF', title, body, tag, fromId });
+  } else {
+    // Fallback directo si el SW no está listo aún
+    try {
+      const n = new Notification(title, {
+        body, icon: '/icon.svg', tag, renotify: true
+      });
+      n.onclick = () => { window.focus(); n.close(); };
+    } catch(e) {}
   }
 }
 
-// Registrar SW y suscribirse a Web Push
+// ── Registrar SW ──────────────────────────────────────────────────────────
 async function registerSW() {
   if (!('serviceWorker' in navigator)) return;
   try {
-    await navigator.serviceWorker.register('/sw.js');
+    const reg = await navigator.serviceWorker.register('/sw.js');
     await navigator.serviceWorker.ready;
-  } catch(e) { console.warn('[SW]', e); }
+    console.log('[SW] Registrado ✓');
+    // Sincronizar sesión tan pronto como el SW esté listo
+    setTimeout(syncSessionToSW, 500);
+  } catch(e) { console.warn('[SW] Error:', e); }
 }
 
-// Suscribir al usuario a Web Push y guardar suscripción en Supabase
+// ── Sincronizar sesión al SW para su polling independiente ────────────────
+function syncSessionToSW() {
+  if (!ME) return;
+  const doSync = (ctrl) => {
+    ctrl.postMessage({
+      type: 'SYNC_SESSION',
+      userId: ME.id,
+      supabaseUrl: CFG.SUPABASE_URL,
+      supabaseKey: CFG.SUPABASE_KEY,
+      lastCheck: lastMsgCheck,
+    });
+  };
+  if (navigator.serviceWorker?.controller) {
+    doSync(navigator.serviceWorker.controller);
+  } else if ('serviceWorker' in navigator) {
+    // SW aún no activo — esperar
+    navigator.serviceWorker.ready.then(reg => {
+      if (reg.active) doSync(reg.active);
+    }).catch(() => {});
+  }
+}
+
+// ── Push subscription (para notifs con app completamente cerrada via VAPID) ──
 async function subscribeToPush() {
   if (!ME || !canNotify()) return;
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
   try {
     const reg = await navigator.serviceWorker.ready;
-    // Verificar si ya existe suscripción
     let sub = await reg.pushManager.getSubscription();
     if (!sub) {
-      // Crear nueva suscripción
       sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
       });
     }
-    // Guardar/actualizar en Supabase
     await sb.post('push_subscriptions', {
       user_id: ME.id,
       subscription: JSON.stringify(sub.toJSON()),
-    }).catch(async () => {
-      // Si ya existe, actualizar
-      await sb.patch('push_subscriptions', `?user_id=eq.${ME.id}`, {
+    }).catch(() =>
+      sb.patch('push_subscriptions', '?user_id=eq.' + ME.id, {
         subscription: JSON.stringify(sub.toJSON())
-      });
-    });
-    console.log('[Push] Suscripción guardada ✓');
-  } catch(e) { console.warn('[Push] Error al suscribir:', e); }
+      })
+    );
+  } catch(e) { console.warn('[Push subscribe]', e); }
 }
 
 function urlBase64ToUint8Array(base64String) {
@@ -2219,17 +2250,14 @@ function urlBase64ToUint8Array(base64String) {
   return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
 }
 
-// Sincronizar sesión al SW para que pueda hacer polling con app cerrada
-function syncSessionToSW() {
-  if (!ME || !('serviceWorker' in navigator) || !navigator.serviceWorker.controller) return;
-  navigator.serviceWorker.controller.postMessage({
-    type: 'SYNC_SESSION',
-    userId: ME.id,
-    supabaseUrl: CFG.SUPABASE_URL,
-    supabaseKey: CFG.SUPABASE_KEY,
-    lastCheck: lastMsgCheck,
-  });
-}
+// Sincronizar sesión con SW cuando el usuario vuelve a la app
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && ME) {
+    syncSessionToSW();
+    checkNewMessages(); // check inmediato al volver
+  }
+});
+
 // ── Escuchar mensajes del Service Worker ─────────────────────────────────
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('message', e => {
@@ -2321,17 +2349,26 @@ async function checkNewMessages() {
       } else {
         // Mensaje normal
         const inThisChat = currentScreen === 'chat' && currentChatFriend?.id === msg.from_id;
+        const notifText = msg.type === 'reel'
+          ? `🎬 ${msg.reel_title || 'Te mandó un reel'}`
+          : msg.type === 'sticker'
+          ? `${msg.content || '😊'} Sticker`
+          : msg.type === 'image' || msg.type === 'image_once'
+          ? '🖼️ Imagen'
+          : msg.type === 'audio'
+          ? '🎤 Audio'
+          : (msg.content || '').slice(0, 80);
+
         if (inThisChat) {
-          // Estamos en ese chat — solo recargar mensajes
+          // En ese chat — recargar mensajes silenciosamente
           await loadChatMessages(sender.id, true);
+          // Aun así sincronizar SW por si el usuario minimiza mientras lee
+          syncSessionToSW();
         } else {
-          // No estamos en ese chat — notificar siempre
+          // En otra pantalla — mostrar notificación in-app + OS
           unreadConvs.add(msg.from_id);
           showPush(sender, msg);
           updateMsgBadge();
-          const notifText = msg.type === 'reel'
-            ? `🎬 ${msg.reel_title || 'Te mandó un reel'}`
-            : (msg.content || '').slice(0, 80);
           showBrowserNotif(sender.name, notifText, sender.id, 'msg');
         }
       }
