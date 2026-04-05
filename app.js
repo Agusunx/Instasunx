@@ -2295,7 +2295,8 @@ async function requestNotifPermission() {
     });
     if (perm === 'granted') {
       toast('🔔 Notificaciones activadas ✓');
-      await subscribeToPush(); // Suscribir a Web Push para notifs con app cerrada
+      await subscribeToPush();
+      setTimeout(syncSessionToSW, 600); // sync inmediato para que el SW empiece a escuchar
     } else if (perm === 'denied') {
       toast('Notificaciones bloqueadas en el browser');
     } else {
@@ -2316,15 +2317,20 @@ function dismissNotifBanner() {
 }
 
 function maybeAskNotifPermission() {
-  // Solo mostrar si: el browser soporta notifs, no preguntó antes, y el permiso es default
   if (!('Notification' in window)) return;
-  if (Notification.permission !== 'default') return;
+  // Si ya fue aceptado, suscribir silenciosamente y no mostrar banner
+  if (Notification.permission === 'granted') {
+    registerSW().then(() => subscribeToPush());
+    return;
+  }
+  // Si fue bloqueado o ya se preguntó, no molestar
+  if (Notification.permission === 'denied') return;
   if (localStorage.getItem('isx_notif_asked')) return;
-  // Mostrar banner a los 4 segundos — suave, no invasivo
+  // Mostrar banner a los 2.5 segundos del login
   setTimeout(() => {
     const banner = document.getElementById('notif-banner');
     if (banner) banner.classList.add('show');
-  }, 4000);
+  }, 2500);
 }
 
 // ══════════════════════════════════════════════════════════
