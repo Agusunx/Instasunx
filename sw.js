@@ -109,7 +109,7 @@ async function _poll() {
 
 function _notify(title, body, tag) {
   return self.registration.showNotification(title, {
-    body, icon: '/icon.svg', badge: '/icon.svg',
+    body, icon: '/icon-192.png', badge: '/icon-192.png',
     tag, renotify: true, vibrate: [100, 50, 100, 50, 150],
     silent: false,
   });
